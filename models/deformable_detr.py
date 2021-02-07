@@ -329,6 +329,9 @@ class SetCriterion(nn.Module):
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
+    def loss_smpl(self, outputs, tragets, indices, num_boxes):
+        return 0
+
     def forward(self, outputs, targets):
         """ This performs the loss computation.
         Parameters:
@@ -445,6 +448,10 @@ def build(args):
     num_classes = 20 if args.dataset_file != 'coco' else 91
     if args.dataset_file == "coco_panoptic":
         num_classes = 250
+
+    if args.smpl:
+        num_classes = 2
+
     device = torch.device(args.device)
 
     backbone = build_backbone(args)
@@ -462,6 +469,11 @@ def build(args):
     )
     if args.masks:
         model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
+
+    if args.smpl:
+        from .smpl import DETRsmpl
+        model = DETRsmpl(model, freeze_detr=(args.frozen_weights is not None))
+
     matcher = build_matcher(args)
     weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef}
     weight_dict['loss_giou'] = args.giou_loss_coef

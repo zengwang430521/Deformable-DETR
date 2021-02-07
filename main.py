@@ -84,6 +84,9 @@ def get_args_parser():
     # * Segmentation
     parser.add_argument('--masks', action='store_true',
                         help="Train segmentation head if the flag is provided")
+    # * SMPL
+    parser.add_argument('--smpl', action='store_true',
+                        help="Train smpl head if the flag is provided")
 
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
@@ -150,6 +153,7 @@ def main(args):
     print('number of params:', n_parameters)
 
     dataset_train = build_dataset(image_set='train', args=args)
+    # dataset_train = build_dataset(image_set='val', args=args)   # debug only
     dataset_val = build_dataset(image_set='val', args=args)
 
     if args.distributed:

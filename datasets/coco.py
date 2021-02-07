@@ -21,6 +21,7 @@ from pycocotools import mask as coco_mask
 from .torchvision_datasets import CocoDetection as TvCocoDetection
 from util.misc import get_local_rank, get_local_size
 import datasets.transforms as T
+import datasets.my_transforms as MyT
 
 
 class CocoDetection(TvCocoDetection):
@@ -154,6 +155,40 @@ def make_coco_transforms(image_set):
     raise ValueError(f'unknown {image_set}')
 
 
+def smpl_coco_transforms(image_set):
+
+    normalize = MyT.Compose([
+        MyT.ToTensor(),
+        MyT.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+
+    scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+
+    if image_set == 'train':
+        return MyT.Compose([
+            MyT.TranKeypoints(),
+            MyT.RandomHorizontalFlip(),
+            MyT.RandomSelect(
+                MyT.RandomResize(scales, max_size=1333),
+                MyT.Compose([
+                    MyT.RandomResize([400, 500, 600]),
+                    MyT.RandomSizeCrop(384, 600),
+                    MyT.RandomResize(scales, max_size=1333),
+                ])
+            ),
+            normalize,
+        ])
+
+    if image_set == 'val':
+        return MyT.Compose([
+            MyT.TranKeypoints(),
+            MyT.RandomResize([800], max_size=1333),
+            normalize,
+        ])
+
+    raise ValueError(f'unknown {image_set}')
+
+
 def build(image_set, args):
     root = Path(args.coco_path)
     assert root.exists(), f'provided COCO path {root} does not exist'
@@ -165,5 +200,20 @@ def build(image_set, args):
 
     img_folder, ann_file = PATHS[image_set]
     dataset = CocoDetection(img_folder, ann_file, transforms=make_coco_transforms(image_set), return_masks=args.masks,
+                            cache_mode=args.cache_mode, local_rank=get_local_rank(), local_size=get_local_size())
+    return dataset
+
+
+def smpl_build(image_set, args):
+    root = Path(args.coco_path)
+    assert root.exists(), f'provided COCO path {root} does not exist'
+    mode = 'person_keypoints'
+    PATHS = {
+        "train": (root / "train2014", root / "annotations" / f'{mode}_train2014.json'),
+        "val": (root / "val2014", root / "annotations" / f'{mode}_val2014.json'),
+    }
+
+    img_folder, ann_file = PATHS[image_set]
+    dataset = CocoDetection(img_folder, ann_file, transforms=smpl_coco_transforms(image_set), return_masks=False,
                             cache_mode=args.cache_mode, local_rank=get_local_rank(), local_size=get_local_size())
     return dataset
