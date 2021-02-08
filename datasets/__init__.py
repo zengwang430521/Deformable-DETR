@@ -25,12 +25,15 @@ def get_coco_api_from_dataset(dataset):
 
 
 def build_dataset(image_set, args):
-    if args.smpl:
-        if args.dataset_file == 'coco':
-            return smpl_build_coco(image_set, args)
-        if args.dataset_file == 'coco_panoptic':
-            pass
-        raise ValueError(f'dataset {args.dataset_file} not supported')
+    # FIXME : NOT FINSHED VAL SET YET
+    if args.smpl and image_set == 'train':
+        from .my_common import build_smpl_mix_dataset
+        return build_smpl_mix_dataset(image_set, args)
+        # if args.dataset_file == 'coco':
+        #     return smpl_build_coco(image_set, args)
+        # if args.dataset_file == 'coco_panoptic':
+        #     pass
+        # raise ValueError(f'dataset {args.dataset_file} not supported')
     else:
         if args.dataset_file == 'coco':
             return build_coco(image_set, args)

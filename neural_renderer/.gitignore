@@ -1,18 +1,4 @@
-*.xml
-*.pyc
-*.egg
-*.o
-.idea
-*/build/*
-data
-
-*.out
-*.ipynb
-data/
-
 .DS_Store
-.idea
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -20,6 +6,8 @@ __pycache__/
 
 # C extensions
 *.so
+*.ninja*
+*.o
 
 # Distribution / packaging
 .Python
@@ -118,15 +106,14 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# cython generated cpp
-mmdet/ops/nms/src/soft_nms_cpu.cpp
-mmdet/version.py
-data
-.vscode
-.idea
+# vim swap files
+*.swp
 
-# custom
-*.pkl
-*.pkl.json
-*.log.json
-work_dirs/
+# result gifs
+*result.gif
+tests/data/car.png
+tests/data/display.png
+tests/data/test_rasterize1.png
+tests/data/test_rasterize2.png
+examples/data/example1.gif
+examples/data/example2_optimization.gif

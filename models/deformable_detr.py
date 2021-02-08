@@ -34,6 +34,7 @@ def _get_clones(module, N):
 
 class DeformableDETR(nn.Module):
     """ This is the Deformable DETR module that performs object detection """
+
     def __init__(self, backbone, transformer, num_classes, num_queries, num_feature_levels,
                  aux_loss=True, with_box_refine=False, two_stage=False):
         """ Initializes the model.
@@ -55,7 +56,7 @@ class DeformableDETR(nn.Module):
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.num_feature_levels = num_feature_levels
         if not two_stage:
-            self.query_embed = nn.Embedding(num_queries, hidden_dim*2)
+            self.query_embed = nn.Embedding(num_queries, hidden_dim * 2)
         if num_feature_levels > 1:
             num_backbone_outs = len(backbone.strides)
             input_proj_list = []
@@ -154,7 +155,9 @@ class DeformableDETR(nn.Module):
         query_embeds = None
         if not self.two_stage:
             query_embeds = self.query_embed.weight
-        hs, init_reference, inter_references, enc_outputs_class, enc_outputs_coord_unact = self.transformer(srcs, masks, pos, query_embeds)
+        hs, init_reference, inter_references, enc_outputs_class, enc_outputs_coord_unact = self.transformer(srcs, masks,
+                                                                                                            pos,
+                                                                                                            query_embeds)
 
         outputs_classes = []
         outputs_coords = []
@@ -201,6 +204,7 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth boxes and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
+
     def __init__(self, num_classes, matcher, weight_dict, losses, focal_alpha=0.25):
         """ Create the criterion.
         Parameters:
@@ -234,8 +238,9 @@ class SetCriterion(nn.Module):
                                             dtype=src_logits.dtype, layout=src_logits.layout, device=src_logits.device)
         target_classes_onehot.scatter_(2, target_classes.unsqueeze(-1), 1)
 
-        target_classes_onehot = target_classes_onehot[:,:,:-1]
-        loss_ce = sigmoid_focal_loss(src_logits, target_classes_onehot, num_boxes, alpha=self.focal_alpha, gamma=2) * src_logits.shape[1]
+        target_classes_onehot = target_classes_onehot[:, :, :-1]
+        loss_ce = sigmoid_focal_loss(src_logits, target_classes_onehot, num_boxes, alpha=self.focal_alpha, gamma=2) * \
+                  src_logits.shape[1]
         losses = {'loss_ce': loss_ce}
 
         if log:
@@ -329,9 +334,6 @@ class SetCriterion(nn.Module):
         assert loss in loss_map, f'do you really want to compute {loss} loss?'
         return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
 
-    def loss_smpl(self, outputs, tragets, indices, num_boxes):
-        return 0
-
     def forward(self, outputs, targets):
         """ This performs the loss computation.
         Parameters:
@@ -394,6 +396,96 @@ class SetCriterion(nn.Module):
         return losses
 
 
+class MySetCriterion(SetCriterion):
+    """ This class computes the loss for DETR.
+    The process happens in two steps:
+        1) we compute hungarian assignment between ground truth boxes and the outputs of the model
+        2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
+    """
+
+    def __init__(self, num_classes, matcher, weight_dict, losses, focal_alpha=0.25):
+        """ Create the criterion.
+        Parameters:
+            num_classes: number of object categories, omitting the special no-object category
+            matcher: module able to compute a matching between targets and proposals
+            weight_dict: dict containing as key the names of the losses and as values their relative weight.
+            losses: list of all the losses to be applied. See get_loss for list of available losses.
+            focal_alpha: alpha in Focal Loss
+        """
+        super().__init__(num_classes, matcher, weight_dict, losses, focal_alpha)
+        from .smpl_loss import SMPLLoss
+        self.smpl_criterion = SMPLLoss()
+
+    def loss_smpl(self, outputs, targets, indices, num_boxes):
+        t = 0
+        return self.smpl_criterion(outputs, targets, indices, num_boxes)
+
+    def forward(self, outputs, targets):
+        """ This performs the loss computation.
+        Parameters:
+             outputs: dict of tensors, see the output specification of the model for the format
+             targets: list of dicts, such that len(targets) == batch_size.
+                      The expected keys in each dict depends on the losses applied, see each loss' doc
+        """
+        outputs_without_aux = {k: v for k, v in outputs.items() if k != 'aux_outputs' and k != 'enc_outputs'}
+
+        # Retrieve the matching between the outputs of the last layer and the targets
+        indices = self.matcher(outputs_without_aux, targets)
+
+        # Compute the average number of target boxes accross all nodes, for normalization purposes
+        num_boxes = sum(len(t["labels"]) for t in targets)
+        num_boxes = torch.as_tensor([num_boxes], dtype=torch.float, device=next(iter(outputs.values())).device)
+        if is_dist_avail_and_initialized():
+            torch.distributed.all_reduce(num_boxes)
+        num_boxes = torch.clamp(num_boxes / get_world_size(), min=1).item()
+
+        # Compute all the requested losses
+        losses = {}
+        for loss in self.losses:
+            kwargs = {}
+            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes, **kwargs))
+
+        losses.update(self.loss_smpl(outputs, targets, indices, num_boxes))
+
+
+        # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
+        if 'aux_outputs' in outputs:
+            for i, aux_outputs in enumerate(outputs['aux_outputs']):
+                indices = self.matcher(aux_outputs, targets)
+                for loss in self.losses:
+                    if loss == 'masks':
+                        # Intermediate masks losses are too costly to compute, we ignore them.
+                        continue
+                    kwargs = {}
+                    if loss == 'labels':
+                        # Logging is enabled only for the last layer
+                        kwargs['log'] = False
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
+                    l_dict = {k + f'_{i}': v for k, v in l_dict.items()}
+                    losses.update(l_dict)
+
+        if 'enc_outputs' in outputs:
+            enc_outputs = outputs['enc_outputs']
+            bin_targets = copy.deepcopy(targets)
+            for bt in bin_targets:
+                bt['labels'] = torch.zeros_like(bt['labels'])
+            indices = self.matcher(enc_outputs, bin_targets)
+            for loss in self.losses:
+                if loss == 'masks':
+                    # Intermediate masks losses are too costly to compute, we ignore them.
+                    continue
+                kwargs = {}
+                if loss == 'labels':
+                    # Logging is enabled only for the last layer
+                    kwargs['log'] = False
+                l_dict = self.get_loss(loss, enc_outputs, bin_targets, indices, num_boxes, **kwargs)
+                l_dict = {k + f'_enc': v for k, v in l_dict.items()}
+                losses.update(l_dict)
+
+
+        return losses
+
+
 class PostProcess(nn.Module):
     """ This module converts the model's output into the format expected by the coco api"""
 
@@ -417,7 +509,7 @@ class PostProcess(nn.Module):
         topk_boxes = topk_indexes // out_logits.shape[2]
         labels = topk_indexes % out_logits.shape[2]
         boxes = box_ops.box_cxcywh_to_xyxy(out_bbox)
-        boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1,1,4))
+        boxes = torch.gather(boxes, 1, topk_boxes.unsqueeze(-1).repeat(1, 1, 4))
 
         # and from relative [0, 1] to absolute [0, height] coordinates
         img_h, img_w = target_sizes.unbind(1)
@@ -471,7 +563,7 @@ def build(args):
         model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
 
     if args.smpl:
-        from .smpl import DETRsmpl
+        from .smpl_head import DETRsmpl
         model = DETRsmpl(model, freeze_detr=(args.frozen_weights is not None))
 
     matcher = build_matcher(args)
@@ -491,8 +583,16 @@ def build(args):
     losses = ['labels', 'boxes', 'cardinality']
     if args.masks:
         losses += ["masks"]
-    # num_classes, matcher, weight_dict, losses, focal_alpha=0.25
-    criterion = SetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
+
+    # if args.smpl:
+    #     losses += ["smpl"]
+
+    if args.smpl:
+        criterion = MySetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
+    else:
+        # num_classes, matcher, weight_dict, losses, focal_alpha=0.25
+        criterion = SetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
+
     criterion.to(device)
     postprocessors = {'bbox': PostProcess()}
     if args.masks:

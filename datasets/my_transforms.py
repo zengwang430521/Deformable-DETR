@@ -16,6 +16,7 @@ import PIL
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as F
+from PIL import Image
 
 from util.box_ops import box_xyxy_to_cxcywh
 from util.misc import interpolate
@@ -73,6 +74,9 @@ def crop(image, target, region):
         target["joints_2d"] = cropped_joints_2d
         target["joints_2d_visible"] = cropped_joints_2d_visible
 
+    if "scene" in target:
+        target["scene"] = target['scene'][i:i + h, j:j + w]
+
     return cropped_image, target
 
 
@@ -108,6 +112,9 @@ def hflip(image, target):
         smpl_pose = target["smpl_pose"]
         smpl_pose = flip_smpl_pose(smpl_pose)
         target["smpl_pose"] = smpl_pose
+
+    if "scene" in target:
+        target["scene"] = target['scene'].flip(-1)
 
     return flipped_image, target
 
@@ -173,6 +180,12 @@ def resize(image, target, size, max_size=None):
         scaled_joints_2d = joints_2d * torch.as_tensor([ratio_width, ratio_height])
         target["joints_2d"] = scaled_joints_2d
 
+    if "scene" in target:
+        scene = target["scene"]
+        rescaled_scene = interpolate(scene[None, None, ...].float(), size, mode="nearest")
+        rescaled_scene = rescaled_scene.type(torch.uint8)[0, 0]
+        target["scene"] = rescaled_scene
+
     return rescaled_image, target
 
 
@@ -186,6 +199,10 @@ def pad(image, target, padding):
     target["size"] = torch.tensor(padded_image[::-1])
     if "masks" in target:
         target['masks'] = torch.nn.functional.pad(target['masks'], (0, padding[0], 0, padding[1]))
+
+    if "scene" in target:
+        target["scene"] = torch.nn.functional.pad(target['scene'], (0, padding[0], 0, padding[1]))
+
     return padded_image, target
 
 
@@ -341,6 +358,37 @@ class TranKeypoints(object):
         return img, target
 
 
+class AddSMPLKeys(object):
+    def __call__(self, img, target):
+        boxes = target["boxes"]
+        num_bbox = boxes.shape[0]
+
+        if "joints_2d" not in target:
+            target["joints_2d"] = boxes.new_zeros(num_bbox, 24, 2)
+            target["joints_2d_visible"] = boxes.new_zeros(num_bbox, 24)
+
+        if "joints_3d" not in target:
+            target["joints_3d"] = boxes.new_zeros(num_bbox, 24, 3)
+            target["joints_3d_visible"] = boxes.new_zeros(num_bbox, 24)
+
+        if "smpl_pose" not in target:
+            target["smpl_pose"] = boxes.new_zeros(num_bbox, 72)
+            target["smpl_shape"] = boxes.new_zeros(num_bbox, 10)
+            target["has_smpl"] = boxes.new_zeros(num_bbox).long()
+
+        if "camera" not in target:
+            target["camera"] = boxes.new_zeros(num_bbox, 3)
+
+        if "trans" not in target:
+            target["trans"] = boxes.new_zeros(num_bbox, 3)
+
+        if "scene" not in target:
+            _, h, w = img.shape
+            target["scene"] = torch.zeros([h, w], dtype=torch.uint8)
+
+        return img, target
+
+
 def flip_kp_2d(kp, kp_visible, img_width):
     """
     Flip augmentation for keypoints
@@ -378,10 +426,13 @@ def flip_smpl_pose(pose):
                     34, 35, 30, 31, 32, 36, 37, 38, 42, 43, 44, 39, 40, 41,
                     45, 46, 47, 51, 52, 53, 48, 49, 50, 57, 58, 59, 54, 55,
                     56, 63, 64, 65, 60, 61, 62, 69, 70, 71, 66, 67, 68]
-    pose = pose[flippedParts]
+    num = pose.shape[0]
+    pose = pose.reshape(num, 72)
+    pose = pose[:, flippedParts]
     # we also negate the second and the third dimension of the axis-angle
-    pose[1::3] = -pose[1::3]
-    pose[2::3] = -pose[2::3]
+    pose[:, 1::3] = -pose[:, 1::3]
+    pose[:, 2::3] = -pose[:, 2::3]
+    pose = pose.reshape(num, 24, 3)
     return pose
 
 

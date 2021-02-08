@@ -177,6 +177,7 @@ def smpl_coco_transforms(image_set):
                 ])
             ),
             normalize,
+            MyT.AddSMPLKeys(),
         ])
 
     if image_set == 'val':

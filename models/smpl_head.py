@@ -121,8 +121,22 @@ class DETRsmpl(nn.Module):
             out['enc_outputs'] = {'pred_logits': enc_outputs_class, 'pred_boxes': enc_outputs_coord}
 
         # smpl
-        smpl_para = self.smpl_head(hs)
-        out["pred_smpl"] = smpl_para
+        if self.detr.aux_loss:
+            smpl_para = self.smpl_head(hs)
+            out["pred_smpl_pose"] = smpl_para[0][-1]
+            out["pred_smpl_shape"] = smpl_para[1][-1]
+            out["pred_camera"] = smpl_para[2][-1]
+
+            for lvl in range(len(out['aux_outputs'])):
+                out['aux_outputs'][lvl]["pred_smpl_pose"] = smpl_para[0][lvl]
+                out['aux_outputs'][lvl]["pred_smpl_shape"] = smpl_para[1][lvl]
+                out['aux_outputs'][lvl]["pred_camera"] = smpl_para[2][lvl]
+        else:
+            smpl_para = self.smpl_head(hs[-1].unsqueeze(0))
+            out["pred_smpl_pose"] = smpl_para[0][-1]
+            out["pred_smpl_shape"] = smpl_para[1][-1]
+            out["pred_camera"] = smpl_para[2][-1]
+
         return out
 
 
@@ -181,7 +195,7 @@ class SimpleHead(nn.Module):
 
         self.layers = nn.Sequential(FCBlock(in_channels, in_channels),
                                     FCResBlock(in_channels, in_channels),
-                                    nn.Linear(in_channels, 24 * 3 * 3 + 10))
+                                    nn.Linear(in_channels, 24 * 3 * 3 + 10 + 3))
 
         self.use_cpu_svd = use_cpu_svd
 
@@ -201,7 +215,9 @@ class SimpleHead(nn.Module):
         x = x.view(batch_size, -1)
         x = self.layers(x)
         rotmat = x[:, :24*3*3].view(-1, 24, 3, 3).contiguous()
-        betas = x[:, 24*3*3:].contiguous()
+        betas = x[:, 24*3*3:-3].contiguous()
+        camera = x[:, -3:].contiguous()
+
         rotmat = rotmat.view(-1, 3, 3).contiguous()
         orig_device = rotmat.device
         if self.use_cpu_svd:
@@ -225,7 +241,8 @@ class SimpleHead(nn.Module):
 
         rotmat = rotmat.view(stage, bs, num_query, 24, 3, 3)
         betas = betas.view(stage, bs, num_query, 10)
-        return rotmat, betas
+        camera = camera.view(stage, bs, num_query, 3)
+        return rotmat, betas, camera
 
 
 def batch_svd(A):
