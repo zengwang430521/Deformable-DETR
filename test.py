@@ -47,19 +47,35 @@ common_train_cfg = dict(
 #         **common_train_cfg
 # )
 
-coco_data_root = '/home/wzeng/mydata/coco/'
-dataset_cfg = dict(
-    # ann_file=coco_data_root + 'annotations/train_densepose_2014_scene.pkl',
-    ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
-    img_prefix=coco_data_root + 'train2014/',
-    # sample_weight=0.3,
-    transforms=smpl_common_transforms('train'),
-    **common_train_cfg
-)
+# coco_data_root = '/home/wzeng/mydata/coco/'
+# dataset_cfg = dict(
+#     # ann_file=coco_data_root + 'annotations/train_densepose_2014_scene.pkl',
+#     ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
+#     img_prefix=coco_data_root + 'train2014/',
+#     # sample_weight=0.3,
+#     transforms=smpl_common_transforms('train'),
+#     **common_train_cfg
+# )
 
-test_dataset = SMPLDataset(**dataset_cfg)
 
-for i in range(100):
+
+# h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
+# dataset_cfg = dict(
+#     # ann_file=coco_data_root + 'annotations/train_densepose_2014_scene.pkl',
+#     ann_file=h36m_root + 'rcnn/train.pkl',
+#     img_prefix=h36m_root,
+#     # sample_weight=0.3,
+#     transforms=smpl_common_transforms('train'),
+#     **common_train_cfg
+# )
+#
+# test_dataset = SMPLDataset(**dataset_cfg)
+
+from datasets.my_common import build_smpl_mix_dataset
+from tqdm import tqdm
+
+test_dataset = build_smpl_mix_dataset('train')
+for i in tqdm(range(0, test_dataset.__len__(), 1000)):
     test_item = test_dataset[i]
 
 t = 0

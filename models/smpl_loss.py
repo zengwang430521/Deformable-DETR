@@ -197,7 +197,6 @@ class SMPLLoss(nn.Module):
         # pred_bboxes = target['pred_bboxes']
         pred_bboxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
 
-
         # raw_images = target['raw_images']
         # img_meta = target['img_meta']
         # ori_shape = [i['ori_shape'] for i in img_meta]
@@ -227,6 +226,8 @@ class SMPLLoss(nn.Module):
         img_shape = torch.stack([t['size'] for t in targets], dim=0)
         img_size = img_shape[idxs_in_batch]
 
+
+        pred_bboxes[:, 2:] += pred_bboxes[:, :2]
         pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
 
         center_pts = (pred_bboxes[..., :2] + pred_bboxes[..., 2:]) / 2

@@ -588,6 +588,13 @@ def build(args):
     #     losses += ["smpl"]
 
     if args.smpl:
+        weight_dict["loss_regr_pose"] = args.pose_loss_coef
+        weight_dict['loss_regr_betas'] = args.betas_loss_coef
+        weight_dict["loss_shape_smpl"] = args.mesh_loss_coef
+        weight_dict["loss_keypoints_smpl"] = args.key_loss_coef
+        weight_dict["loss_keypoints_3d_smpl"] = args.key3D_loss_coef
+        weight_dict["loss_batch_rank"] = args.br_loss_coef
+        weight_dict["loss_sdf"] = args.sdf_loss_coef
         criterion = MySetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
     else:
         # num_classes, matcher, weight_dict, losses, focal_alpha=0.25

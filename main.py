@@ -108,6 +108,16 @@ def get_args_parser():
     parser.add_argument('--giou_loss_coef', default=2, type=float)
     parser.add_argument('--focal_alpha', default=0.25, type=float)
 
+    # loss for smpl head
+    parser.add_argument('--br_loss_coef', default=100, type=float)
+    parser.add_argument('--sdf_loss_coef', default=0.01, type=float)
+    parser.add_argument('--betas_loss_coef', default=0.01, type=float)
+    parser.add_argument('--pose_loss_coef', default=1, type=float)
+    parser.add_argument('--mesh_loss_coef', default=1, type=float)
+    parser.add_argument('--key_loss_coef', default=4, type=float)
+    parser.add_argument('--key3D_loss_coef', default=1, type=float)
+
+
     # dataset parameters
     parser.add_argument('--dataset_file', default='coco')
     parser.add_argument('--coco_path', default='./data/coco', type=str)

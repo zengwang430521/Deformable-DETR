@@ -228,6 +228,7 @@ class SMPLDataset(Dataset):
 
         if 'pose' in img_info:
             pose = torch.tensor(img_info['pose'], dtype=torch.float32)
+            pose = pose.reshape(num_box, 24, 3)
             shape = torch.tensor(img_info['shape'], dtype=torch.float32)
             has_smpl = torch.tensor(img_info['has_smpl'], dtype=torch.int64)
         else:
@@ -282,24 +283,42 @@ class SMPLDataset(Dataset):
         return img, target
 
 
-def build_smpl_mix_dataset(image_set, args):
+def build_smpl_mix_dataset(image_set, args=None):
     mpii_root = '/home/wzeng/mydata/mpii/'
     coco_data_root = '/home/wzeng/mydata/coco/'
+    h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
+    pose_track_root = '/home/wzeng/mydata/posetrack2018/'
+    mpi_inf_3dhp_root = '/home/wzeng/mydata/mpi_inf_3dhp_new/'
+    panoptic_root = '/home/wzeng/mydata/Panoptic/'
 
     if image_set == 'train':
         train_cfgs = [
+            # dict(
+            #     ann_file=mpii_root + 'rcnn/train.pkl',
+            #     img_prefix=mpii_root + 'images/',
+            #     transforms=smpl_common_transforms('train'),
+            # ),
+            # dict(
+            #     ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
+            #     img_prefix=coco_data_root + 'train2014/',
+            #     transforms=smpl_common_transforms('train'),
+            # ),
             dict(
-                ann_file=mpii_root + 'rcnn/train.pkl',
-                img_prefix=mpii_root + 'images/',
+                ann_file=h36m_root + 'rcnn/train.pkl',
+                img_prefix=h36m_root,
                 transforms=smpl_common_transforms('train'),
             ),
-            dict(
-                ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
-                img_prefix=coco_data_root + 'train2014/',
-                transforms=smpl_common_transforms('train'),
-            )
+            # dict(
+            #     ann_file=pose_track_root + 'rcnn/train.pkl',
+            #     img_prefix=pose_track_root,
+            #     transforms=smpl_common_transforms('train'),
+            # ),
+            # dict(
+            #     ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
+            #     img_prefix=mpi_inf_3dhp_root,
+            #     transforms=smpl_common_transforms('train'),
+            # )
         ]
-
         datasets = []
         for dataset_cfg in train_cfgs:
             datasets.append(SMPLDataset(**dataset_cfg))
