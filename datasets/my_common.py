@@ -293,31 +293,31 @@ def build_smpl_mix_dataset(image_set, args=None):
 
     if image_set == 'train':
         train_cfgs = [
-            # dict(
-            #     ann_file=mpii_root + 'rcnn/train.pkl',
-            #     img_prefix=mpii_root + 'images/',
-            #     transforms=smpl_common_transforms('train'),
-            # ),
-            # dict(
-            #     ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
-            #     img_prefix=coco_data_root + 'train2014/',
-            #     transforms=smpl_common_transforms('train'),
-            # ),
+            dict(
+                ann_file=mpii_root + 'rcnn/train.pkl',
+                img_prefix=mpii_root + 'images/',
+                transforms=smpl_common_transforms('train'),
+            ),
+            dict(
+                ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
+                img_prefix=coco_data_root + 'train2014/',
+                transforms=smpl_common_transforms('train'),
+            ),
             dict(
                 ann_file=h36m_root + 'rcnn/train.pkl',
                 img_prefix=h36m_root,
                 transforms=smpl_common_transforms('train'),
             ),
-            # dict(
-            #     ann_file=pose_track_root + 'rcnn/train.pkl',
-            #     img_prefix=pose_track_root,
-            #     transforms=smpl_common_transforms('train'),
-            # ),
-            # dict(
-            #     ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
-            #     img_prefix=mpi_inf_3dhp_root,
-            #     transforms=smpl_common_transforms('train'),
-            # )
+            dict(
+                ann_file=pose_track_root + 'rcnn/train.pkl',
+                img_prefix=pose_track_root,
+                transforms=smpl_common_transforms('train'),
+            ),
+            dict(
+                ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
+                img_prefix=mpi_inf_3dhp_root,
+                transforms=smpl_common_transforms('train'),
+            )
         ]
         datasets = []
         for dataset_cfg in train_cfgs:
