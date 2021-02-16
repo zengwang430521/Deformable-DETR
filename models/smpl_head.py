@@ -120,8 +120,9 @@ class DETRsmpl(nn.Module):
             enc_outputs_coord = enc_outputs_coord_unact.sigmoid()
             out['enc_outputs'] = {'pred_logits': enc_outputs_class, 'pred_boxes': enc_outputs_coord}
 
-        # smpl
-        if self.detr.aux_loss:
+        # SMPL paras
+        ##FIXME There is no intermediate loss for SMPL paras yet
+        if self.detr.aux_loss and False:
             smpl_para = self.smpl_head(hs)
             out["pred_smpl_pose"] = smpl_para[0][-1]
             out["pred_smpl_shape"] = smpl_para[1][-1]
@@ -136,6 +137,8 @@ class DETRsmpl(nn.Module):
             out["pred_smpl_pose"] = smpl_para[0][-1]
             out["pred_smpl_shape"] = smpl_para[1][-1]
             out["pred_camera"] = smpl_para[2][-1]
+
+
 
         return out
 
