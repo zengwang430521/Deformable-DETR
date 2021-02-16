@@ -39,7 +39,8 @@ class SDFLoss(nn.Module):
     def filter_isolated_boxes(self, boxes):
 
         num_people = boxes.shape[0]
-        isolated = torch.zeros(num_people, device=boxes.device, dtype=torch.uint8)
+        # isolated = torch.zeros(num_people, device=boxes.device, dtype=torch.uint8)
+        isolated = torch.zeros(num_people, device=boxes.device, dtype=torch.bool)
         for i in range(num_people):
             isolated_i = False
             for j in range(num_people):
