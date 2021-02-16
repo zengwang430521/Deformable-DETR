@@ -260,6 +260,8 @@ class SMPLDataset(Dataset):
         keep = (boxes[:, 3] > boxes[:, 1]) & (boxes[:, 2] > boxes[:, 0])
         boxes = boxes[keep]
         labels = labels[keep]
+        area = area[keep]
+        iscrowd = iscrowd[keep]
         joints_2d, joints_2d_visible = joints_2d[keep], joints_2d_visible[keep]
         joints_3d, joints_3d_visible = joints_3d[keep], joints_3d_visible[keep]
         pose, shape, has_smpl = pose[keep], shape[keep], has_smpl[keep]
@@ -279,6 +281,8 @@ class SMPLDataset(Dataset):
     def __getitem__(self, idx):
         img_info = deepcopy(self.img_infos[idx])
         img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
+        # if '000063.jpg' in img_info['filename']:
+        #     t=0
         img, target = self.prepare(img, img_info)
         if self._transforms is not None:
             img, target = self._transforms(img, target)

@@ -50,6 +50,34 @@ def crop(image, target, region):
         target['masks'] = target['masks'][:, i:i + h, j:j + w]
         fields.append("masks")
 
+    # merged 24 keypoints
+    if "joints_2d" in target:
+        joints_2d = target["joints_2d"]
+        joints_2d_visible = target["joints_2d_visible"]
+        max_size = torch.as_tensor([w, h], dtype=torch.float32)
+        cropped_joints_2d = joints_2d - torch.as_tensor([j, i])[None, :]
+        cropped_joints_2d_visible = (joints_2d_visible *
+                                     (cropped_joints_2d < max_size).min(dim=-1)[0])
+        target["joints_2d"] = cropped_joints_2d
+        target["joints_2d_visible"] = cropped_joints_2d_visible
+        fields.append("joints_2d")
+        fields.append("joints_2d_visible")
+
+    if "joints_3d" in target:
+        fields.append("joints_3d")
+        fields.append("joints_3d_visible")
+    if "smpl_pose" in target:
+        fields.append("smpl_pose")
+        fields.append("smpl_shape")
+        fields.append("has_smpl")
+    if "trans" in target:
+        fields.append("trans")
+    if "camera" in target:
+        fields.append("camera")
+
+    if "scene" in target:
+        target["scene"] = target['scene'][i:i + h, j:j + w]
+
     # remove elements for which the boxes or masks that have zero area
     if "boxes" in target or "masks" in target:
         # favor boxes selection when defining which elements to keep
@@ -61,21 +89,11 @@ def crop(image, target, region):
             keep = target['masks'].flatten(1).any(1)
 
         for field in fields:
+            if len(target[field]) != len(keep):
+                print(field)
+                print(target[field])
+                print(keep)
             target[field] = target[field][keep]
-
-    # merged 24 keypoints
-    if "joints_2d" in target:
-        joints_2d = target["joints_2d"]
-        joints_2d_visible = target["joints_2d_visible"]
-        max_size = torch.as_tensor([w, h], dtype=torch.float32)
-        cropped_joints_2d = joints_2d - torch.as_tensor([j, i])[None, :]
-        cropped_joints_2d_visible = (joints_2d_visible *
-                                     (cropped_joints_2d < max_size).min(dim=-1)[0])
-        target["joints_2d"] = cropped_joints_2d
-        target["joints_2d_visible"] = cropped_joints_2d_visible
-
-    if "scene" in target:
-        target["scene"] = target['scene'][i:i + h, j:j + w]
 
     return cropped_image, target
 
@@ -386,8 +404,7 @@ class AddSMPLKeys(object):
             _, h, w = img.shape
             # target["scene"] = torch.zeros([h, w], dtype=torch.uint8)
             target["scene"] = torch.zeros([h, w], dtype=torch.int64)
-
-
+            
         return img, target
 
 
