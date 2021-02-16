@@ -384,7 +384,9 @@ class AddSMPLKeys(object):
 
         if "scene" not in target:
             _, h, w = img.shape
-            target["scene"] = torch.zeros([h, w], dtype=torch.uint8)
+            # target["scene"] = torch.zeros([h, w], dtype=torch.uint8)
+            target["scene"] = torch.zeros([h, w], dtype=torch.int64)
+
 
         return img, target
 

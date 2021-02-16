@@ -417,7 +417,7 @@ class MySetCriterion(SetCriterion):
         self.smpl_criterion = SMPLLoss()
 
     def loss_smpl(self, outputs, targets, indices, num_boxes):
-        t = 0
+        # t = 0
         return self.smpl_criterion(outputs, targets, indices, num_boxes)
 
     def forward(self, outputs, targets):
@@ -445,6 +445,7 @@ class MySetCriterion(SetCriterion):
             kwargs = {}
             losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes, **kwargs))
 
+        # SMPL head loss
         losses.update(self.loss_smpl(outputs, targets, indices, num_boxes))
 
 
@@ -481,7 +482,6 @@ class MySetCriterion(SetCriterion):
                 l_dict = self.get_loss(loss, enc_outputs, bin_targets, indices, num_boxes, **kwargs)
                 l_dict = {k + f'_enc': v for k, v in l_dict.items()}
                 losses.update(l_dict)
-
 
         return losses
 

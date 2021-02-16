@@ -251,9 +251,11 @@ class SMPLDataset(Dataset):
                 ori_mask = mask_util.decode(
                     self.annToRLE({'width': img_info['width'], 'height': img_info['height'], 'segmentation': seg}))
                 raw_mask[ori_mask > 0] = i + 1
-            scene = torch.from_numpy(raw_mask)
+            # scene = torch.from_numpy(raw_mask)
+            scene = torch.from_numpy(raw_mask).long()
         else:
-            scene = torch.zeros([h, w], dtype=torch.uint8)
+            # scene = torch.zeros([h, w], dtype=torch.uint8)
+            scene = torch.zeros([h, w], dtype=torch.int64)
 
         keep = (boxes[:, 3] > boxes[:, 1]) & (boxes[:, 2] > boxes[:, 0])
         boxes = boxes[keep]

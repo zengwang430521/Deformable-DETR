@@ -207,10 +207,12 @@ class SMPLLoss(nn.Module):
         idxs_in_batch = idx[0]
 
         # pose_idx = target['pose_idx']
-        pose_idx = idx[1]
+        # pose_idx = idx[1]
+        pose_idx = torch.cat([i for (_, i) in indices], dim=0).to(pred_bboxes.device)
 
         # scene = target['scene']
-        scene = None
+        # scene = None
+        scene = [t["scene"] for t in targets]
 
         batch_size = pred_joints.shape[0]
 
@@ -225,6 +227,8 @@ class SMPLLoss(nn.Module):
 
         img_shape = torch.stack([t['size'] for t in targets], dim=0)
         img_size = img_shape[idxs_in_batch]
+        # img_size should be [w, h]
+        img_size = img_size.flip(-1)
 
 
         pred_bboxes[:, 2:] += pred_bboxes[:, :2]
@@ -294,6 +298,9 @@ class SMPLLoss(nn.Module):
             loss_dict.update(
                 {'pred_pose_shape': pred_pose_shape}
             )
+
+
+        # SDF LOSS
         # best_idxs = select_index(idxs_in_batch[valid_boxes], pose_idx[valid_boxes].int()[:, 0],
         #                          bboxes_confidence[valid_boxes])
 
@@ -309,16 +316,20 @@ class SMPLLoss(nn.Module):
         loss_dict.update({
             'loss_sdf': sdf_loss.sum() if self.use_sdf else sdf_loss.sum().detach() * 1e-4
         })
+
+
+        # render Loss
         if self.nr_batch_rank:
             device = pred_vertices.device
             batch_rank_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
             num_intruded_pixels = torch.zeros(len(best_idxs)).to(pred_vertices.device)
             erode_mask_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
 
-            for (bid, ids), img_size_t in zip(enumerate(best_idxs), img_size):
-
+            for (bid, ids), img_size_t in zip(enumerate(best_idxs), img_shape):
+                img_size_t = img_size_t.flip(-1)    # [w, h]
                 image_size_t = max(img_size_t)
-                w_diff, h_diff = (image_size_t - img_size_t[0]) // 2, (image_size_t - img_size_t[1]) // 2
+                self.neural_renderer.image_size = image_size_t.item()
+
 
                 K = torch.eye(3, device=device)
                 K[0, 0] = K[1, 1] = self.FOCAL_LENGTH
@@ -327,14 +338,14 @@ class SMPLLoss(nn.Module):
                 K = K.unsqueeze(0)  # Our batch size is 1
                 R = torch.eye(3, device=device).unsqueeze(0)
                 t = torch.zeros(3, device=device).unsqueeze(0)
-                self.neural_renderer.img_size = image_size_t
+
 
                 if len(ids) <= 1 or scene[bid].max() < 1:
                     continue
                 ids = torch.tensor(ids)
-                verts = pred_vertices[valid_boxes][ids] + translation[valid_boxes][ids].unsqueeze(
-                    1)  # num_personx6890x3
-                cur_pose_idxs = pose_idx[valid_boxes][ids, 0]
+                verts = pred_vertices[valid_boxes][ids] + translation[valid_boxes][ids].unsqueeze(1)  # num_personx6890x3
+                # cur_pose_idxs = pose_idx[valid_boxes][ids, 0]
+                cur_pose_idxs = pose_idx[valid_boxes][ids]
                 with torch.no_grad():
                     pose_idxs_int = cur_pose_idxs.int()
                     has_mask_gt = torch.zeros_like(pose_idxs_int)
@@ -355,15 +366,20 @@ class SMPLLoss(nn.Module):
                 textures = textures[:, :, None, None, None, :]
                 rgb, depth, mask = self.neural_renderer(verts, face_tensor.int(), textures=textures, K=K, R=R, t=t,
                                                         dist_coeffs=torch.tensor([[0., 0., 0., 0., 0.]], device=device))
-                predicted_depth = depth[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
-                predicted_mask = mask[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
+
+                w_diff, h_diff = (image_size_t - img_size_t[0]) // 2, (image_size_t - img_size_t[1]) // 2
+                # predicted_depth = depth[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
+                # predicted_mask = mask[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
+                predicted_depth = depth[:, h_diff:h_diff+img_size_t[1], w_diff:w_diff+img_size_t[0]]
+                predicted_mask = mask[:, h_diff:h_diff+img_size_t[1], w_diff:w_diff+img_size_t[0]]
 
                 with torch.no_grad():
                     gt_foreground = scene[bid] > 0
-                    foreground_select = (cur_pose_idxs.round().int() + 1)[:, None, None] == scene[bid].int()
+                    # foreground_select = (cur_pose_idxs.round().int() + 1)[:, None, None] == scene[bid].int()
+                    foreground_select = (cur_pose_idxs.int() + 1)[:, None, None] == scene[bid].int()
+
                     intruded_parts_mask = torch.prod(predicted_mask, dim=0)
-                    supervising_mask = intruded_parts_mask.unsqueeze(0).float() * gt_foreground.unsqueeze(
-                        0).float() * (~foreground_select).float()
+                    supervising_mask = intruded_parts_mask.unsqueeze(0).float() * gt_foreground.unsqueeze(0).float() * (~foreground_select).float()
                     if supervising_mask.norm() == 0:  # No ordinal relationship errors is detected.
                         continue
 
