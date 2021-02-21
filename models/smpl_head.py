@@ -133,7 +133,7 @@ class DETRsmpl(nn.Module):
                 out['aux_outputs'][lvl]["pred_smpl_shape"] = smpl_para[1][lvl]
                 out['aux_outputs'][lvl]["pred_camera"] = smpl_para[2][lvl]
         else:
-            smpl_para = self.smpl_head(hs[-1].unsqueeze(0))
+            smpl_para = self.smpl_head(hs[-1].unsqueeze(0), outputs_class[-1].unsqueeze(0))
             out["pred_smpl_pose"] = smpl_para[0][-1]
             out["pred_smpl_shape"] = smpl_para[1][-1]
             out["pred_camera"] = smpl_para[2][-1]
@@ -202,18 +202,7 @@ class SimpleHead(nn.Module):
 
         self.use_cpu_svd = use_cpu_svd
 
-    def forward(self, x):
-        """Forward pass.
-        Input:
-            x: size = (B, 1723*6)
-        Returns:
-            SMPL pose parameters as rotation matrices: size = (B,24,3,3)
-            SMPL shape parameters: size = (B,10)
-        """
-
-        stage, bs, num_query, channel = x.shape
-        x = x.flatten(start_dim=0, end_dim=-2)
-
+    def head_forward(self, x):
         batch_size = x.shape[0]
         x = x.view(batch_size, -1)
         x = self.layers(x)
@@ -241,6 +230,28 @@ class SimpleHead(nn.Module):
         rotmat = rotmat * det
         rotmat = rotmat.view(batch_size, 24, 3, 3)
         rotmat = rotmat.to(orig_device)
+        return rotmat, betas, camera
+
+    def forward(self, x, pred_class):
+        """Forward pass.
+        Input:
+            x: size = (B, 1723*6)
+        Returns:
+            SMPL pose parameters as rotation matrices: size = (B,24,3,3)
+            SMPL shape parameters: size = (B,10)
+        """
+
+        stage, bs, num_query, channel = x.shape
+        x = x.flatten(start_dim=0, end_dim=-2)
+        pred_class = pred_class.flatten(start_dim=0, end_dim=-2)
+        valid = pred_class[..., 1] > pred_class[..., 0]
+
+        num_all = x.shape[0]
+        rotmat = x.new_zeros([num_all, 24, 3, 3])
+        betas = x.new_zeros([num_all, 10])
+        camera = x.new_zeros([num_all, 3])
+
+        rotmat[valid], betas[valid], camera[valid] = self.head_forward(x[valid])
 
         rotmat = rotmat.view(stage, bs, num_query, 24, 3, 3)
         betas = betas.view(stage, bs, num_query, 10)
