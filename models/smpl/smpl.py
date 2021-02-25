@@ -56,16 +56,28 @@ class SMPL(_SMPL):
 
     def forward(self, *args, **kwargs):
         kwargs['get_skin'] = True
-        smpl_output = super(SMPL, self).forward(*args, **kwargs)
-        extra_joints = vertices2joints(self.J_regressor_extra, smpl_output.vertices)
-        joints = torch.cat([smpl_output.joints, extra_joints], dim=1)
-        joints = joints[:, self.joint_map, :]
-        output = ModelOutput(vertices=smpl_output.vertices,
-                             global_orient=smpl_output.global_orient,
-                             body_pose=smpl_output.body_pose,
-                             joints=joints,
-                             betas=smpl_output.betas,
-                             full_pose=smpl_output.full_pose)
+        # make it compatible with zero batch_size
+        betas = kwargs['betas']
+        batch_size = kwargs['betas'].shape[0]
+        if batch_size:
+            smpl_output = super(SMPL, self).forward(*args, **kwargs)
+            extra_joints = vertices2joints(self.J_regressor_extra, smpl_output.vertices)
+            joints = torch.cat([smpl_output.joints, extra_joints], dim=1)
+            joints = joints[:, self.joint_map, :]
+            output = ModelOutput(vertices=smpl_output.vertices,
+                                 global_orient=smpl_output.global_orient,
+                                 body_pose=smpl_output.body_pose,
+                                 joints=joints,
+                                 betas=smpl_output.betas,
+                                 full_pose=smpl_output.full_pose)
+        else:
+            output = ModelOutput(vertices=betas.new_zeros([0, 6890, 3]),
+                                 global_orient=betas.new_zeros([0, 1, 3, 3]),
+                                 body_pose=betas.new_zeros([0, 23, 3, 3]),
+                                 joints=betas.new_zeros([0, 24, 3]),
+                                 betas=betas.new_zeros([0, 10]),
+                                 full_pose=None)
+
         return output
 
 
