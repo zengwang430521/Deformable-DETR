@@ -153,8 +153,37 @@ class SMPLLoss(nn.Module):
         # pred_joints = pred['pred_joints']
         # pred_vertices = pred['pred_vertices']
         # pred_betas = pred['pred_betas']
-
         idx = self._get_src_permutation_idx(indices)
+
+        num_smpl = idx[0].shape[0]
+        if not num_smpl:
+            loss_dict = {'loss_keypoints_smpl': outputs["pred_camera"].sum() * 0,
+                         'loss_keypoints_3d_smpl': outputs["pred_smpl_shape"].sum() * 0,
+                         'loss_shape_smpl': outputs["pred_smpl_shape"].sum() * 0,
+                         'loss_regr_pose': outputs["pred_smpl_pose"].sum() * 0,
+                         'loss_regr_betas': outputs["pred_smpl_shape"].sum() * 0,
+                         }
+
+            if self.adversarial_cfg:
+                pass
+
+            loss_dict.update({'loss_sdf': outputs["pred_camera"].new_zeros(1)})
+
+            # render Loss
+            if self.nr_batch_rank:
+                loss_dict.update(
+                    {'loss_batch_rank': outputs["pred_camera"].new_zeros(1),
+                     'num_intruded_pixels': outputs["pred_camera"].new_zeros(1)})
+
+            if self.re_weight:
+                for k, v in self.re_weight.items():
+                    if k.startswith('adv_loss'):
+                        loss_dict[k] *= v
+                    else:
+                        loss_dict[f'loss_{k}'] *= v
+            return loss_dict
+
+
 
         pred_rotmat = outputs["pred_smpl_pose"][idx]
         pred_betas = outputs["pred_smpl_shape"][idx]
@@ -229,7 +258,6 @@ class SMPLLoss(nn.Module):
         img_size = img_shape[idxs_in_batch]
         # img_size should be [w, h]
         img_size = img_size.flip(-1)
-
 
         pred_bboxes[:, 2:] += pred_bboxes[:, :2]
         pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
