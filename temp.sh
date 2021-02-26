@@ -28,3 +28,6 @@ python3 setup.py install
 pip install smplx
 pip install scikit-image
 pip install opencv-python
+
+
+ln -s  /home/wzeng/mydata/mupots-3d data/mupots-3d
