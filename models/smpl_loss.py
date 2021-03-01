@@ -483,8 +483,6 @@ class SMPLLoss(nn.Module):
         # pred_vertices = pred['pred_vertices']
         # pred_betas = pred['pred_betas']
         idx = self._get_src_permutation_idx(indices)
-        idxs_in_batch = idx[0]
-        pose_idx = torch.cat([i for (_, i) in indices], dim=0).to(pred_bboxes.device)
 
         num_smpl = idx[0].shape[0]
         if not num_smpl:
@@ -492,6 +490,9 @@ class SMPLLoss(nn.Module):
 
         # LOAD BBOX
         pred_bboxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        idxs_in_batch = idx[0]
+        pose_idx = torch.cat([i for (_, i) in indices], dim=0).to(pred_bboxes.device)
+
         ori_shape = [t['orig_size'] for t in targets]
         img_shape = torch.stack([t['size'] for t in targets], dim=0)
         img_size = img_shape[idxs_in_batch]
