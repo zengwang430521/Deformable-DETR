@@ -183,7 +183,7 @@ def reduce_dict(input_dict, average=True):
         for k in sorted(input_dict.keys()):
             names.append(k)
             values.append(input_dict[k])
-            if values[-1].shape[0] == 0:
+            if input_dict[k].size()[0] == 0:
                 for t in range(100): print(k)
 
         values = torch.stack(values, dim=0)
