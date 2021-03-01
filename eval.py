@@ -158,7 +158,7 @@ def main(args):
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
+    data_loader_val = DataLoader(dataset_val, 1, sampler=sampler_val,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers,
                                  pin_memory=True)
 
@@ -187,7 +187,7 @@ def main(args):
         # #     utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
 
         from datasets.mesh_eval import evaluate_smpl
-        test_stats = evaluate_smpl(model, data_loader_val, args)
+        test_stats = evaluate_smpl(model, data_loader_val, args, device)
 
         return
 
