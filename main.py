@@ -140,7 +140,7 @@ def get_args_parser():
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
 
 
-    parser.add_argument('--eval_dataset', default='mupots')
+    # parser.add_argument('--eval_dataset', default='mupots')
 
     return parser
 
