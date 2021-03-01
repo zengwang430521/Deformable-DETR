@@ -31,8 +31,17 @@ def build_dataset(image_set, args):
             from .my_common import build_smpl_mix_dataset
             return build_smpl_mix_dataset(image_set, args)
         else:
-            from .my_common import build_smpl_eval_dataset
-            return build_smpl_eval_dataset(args.eval_dataset, args)
+            #TODO: make wval dataset compatiable with training process
+            if hasattr(args, 'eval_dataset'):
+                from .my_common import build_smpl_eval_dataset
+                return build_smpl_eval_dataset(args.eval_dataset, args)
+            # else:
+            #     if args.dataset_file == 'coco':
+            #         return build_coco(image_set, args)
+            #     if args.dataset_file == 'coco_panoptic':
+            #         # to avoid making panopticapi required for coco
+            #         from .coco_panoptic import build as build_coco_panoptic
+            #         return build_coco_panoptic(image_set, args)
 
     else:
         if args.dataset_file == 'coco':

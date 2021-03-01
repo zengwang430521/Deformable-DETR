@@ -139,6 +139,9 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
 
+
+    parser.add_argument('--eval_dataset', default='mupots')
+
     return parser
 
 
