@@ -332,14 +332,19 @@ class SMPLDataset(Dataset):
                       trans=trans, camera=camera,
                       scene=scene
                       )
+
+        # Added for the EVAL on H36M
+        imgname = img_info['filename']
+        is_h36m_p2 = '.60457274_' in imgname
+        is_h36m_p2 = torch.tensor(is_h36m_p2)
+        target['is_h36m_p2'] = is_h36m_p2
+
         return image, target
 
     def __getitem__(self, idx):
         img_info = deepcopy(self.img_infos[idx])
         img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
         img_info = self.add_essential_keys(img_info)
-        # if '000063.jpg' in img_info['filename']:
-        #     t=0
         img, target = self.prepare(img, img_info)
         if self._transforms is not None:
             img, target = self._transforms(img, target)
@@ -393,7 +398,8 @@ def build_smpl_mix_dataset(image_set, args=None):
 
 def build_smpl_eval_dataset(dataset, args=None):
     panoptic_root = ''
-    h36m_root = ''
+    h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
+    h36m_prefix = '/home/wzeng/mydata/MyH36MOrigin'
     mupots_root = "data/mupots-3d/"
 
     eval_dataset_mapper = dict(
@@ -403,8 +409,8 @@ def build_smpl_eval_dataset(dataset, args=None):
             transforms=smpl_common_transforms('eval'),
         ),
         full_h36m=dict(
-            ann_file=h36m_root + 'extras/rcnn/h36m_val.pkl',
-            img_prefix=h36m_root + 'images/',
+            ann_file=h36m_root+'rcnn/val_p2.pkl',
+            img_prefix=h36m_prefix,
             transforms=smpl_common_transforms('eval'),
         ),
         ultimatum=dict(

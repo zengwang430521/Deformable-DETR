@@ -85,6 +85,11 @@ class EvalHandler(object):
     def finalize(self):
         pass
 
+    def to(self, device):
+        self.smpl = self.smpl.to(device)
+        self.J_regressor = self.J_regressor.to(device)
+        return self
+
 
 class MuPoTSEvalHandler(EvalHandler):
 
@@ -127,11 +132,6 @@ class MuPoTSEvalHandler(EvalHandler):
         # self.collision_meter = AverageMeter('collision', ':.2f')
         # self.collision_volume = CollisionVolume(self.smpl.faces, grid_size=64).cuda()
         # self.coll_cnt = 0
-
-    def to(self, device):
-        self.smpl = self.smpl.to(device)
-        self.J_regressor = self.J_regressor.to(device)
-        return self
 
     def handle(self, data_batch, pred_results):
         # # Evaluate collision metric
@@ -266,6 +266,7 @@ class H36MEvalHandler(EvalHandler):
         self.p1_meter = AverageMeter('P1', ':.2f')
         self.p2_meter = AverageMeter('P2', ':.2f')
         self.FOCAL_LENGTH = 1000
+        self.smpl = SMPL('data/smpl')
 
     def handle(self, data_batch, pred_results, use_gt=False):
         FOCAL_LENGTH = self.FOCAL_LENGTH
@@ -328,8 +329,8 @@ class H36MEvalHandler(EvalHandler):
         gt_keypoints_3d = targets[0]['joints_3d'].clone().repeat([pred_vertices.shape[0], 1, 1])
         # gt_keypoints_3d = data_batch['gt_kpts3d'].data[0][0].clone().repeat([pred_vertices.shape[0], 1, 1])
 
-        gt_pelvis_smpl = gt_keypoints_3d[:, [14], :-1].clone()
-        gt_keypoints_3d = gt_keypoints_3d[:, J24_TO_J14, :-1].clone()
+        gt_pelvis_smpl = gt_keypoints_3d[:, [14], :].clone()
+        gt_keypoints_3d = gt_keypoints_3d[:, J24_TO_J14, :].clone()
         gt_keypoints_3d = gt_keypoints_3d - gt_pelvis_smpl
 
         J_regressor_batch = self.J_regressor[None, :].expand(pred_vertices.shape[0], -1, -1).to(pred_vertices.device)
@@ -339,8 +340,7 @@ class H36MEvalHandler(EvalHandler):
         pred_keypoints_3d_smpl = pred_keypoints_3d_smpl[:, H36M_TO_J14, :]
         pred_keypoints_3d_smpl = pred_keypoints_3d_smpl - pred_pelvis_smpl
 
-        ##FIXME: filename
-        file_name = data_batch['img_meta'].data[0][0]['file_name']
+        # file_name = data_batch['img_meta'].data[0][0]['file_name']
 
         # Compute error metrics
         # Absolute error (MPJPE)
@@ -349,7 +349,9 @@ class H36MEvalHandler(EvalHandler):
         mpjpe = float(error_smpl.min() * 1000)
         self.p1_meter.update(mpjpe)
 
-        if self.pattern in file_name:
+        # if self.pattern in file_name:
+        is_p2 = targets[0]['is_h36m_p2'].cpu().item()
+        if is_p2:
             # Reconstruction error
             r_error_smpl = reconstruction_error(pred_keypoints_3d_smpl.cpu().numpy(), gt_keypoints_3d.cpu().numpy(),
                                                 reduction=None)
@@ -358,11 +360,11 @@ class H36MEvalHandler(EvalHandler):
         else:
             r_error = -1
 
-        save_pack = {'file_name': file_name,
+        save_pack = {#'file_name': file_name,
                      'MPJPE': mpjpe,
                      'r_error': r_error,
-                     'pred_rotmat': pred_results['pred_rotmat'],
-                     'pred_betas': pred_results['pred_betas'],
+                     'pred_rotmat': pred_rotmat,
+                     'pred_betas': pred_betas,
                      }
         return save_pack
 
@@ -385,7 +387,8 @@ def evaluate_smpl(model, data_loader, args, device):
         os.makedirs(viz_dir, exist_ok=True)
 
     FOCAL_LENGTH = 1000
-    eval_handler_mapper = dict(mupots=MuPoTSEvalHandler)
+    eval_handler_mapper = dict(mupots=MuPoTSEvalHandler,
+                               full_h36m=H36MEvalHandler)
     eval_handler = eval_handler_mapper[args.eval_dataset](
         writer=tqdm.write, # viz_dir=viz_dir,
         FOCAL_LENGTH=FOCAL_LENGTH,
@@ -416,5 +419,5 @@ def evaluate_smpl(model, data_loader, args, device):
             #     for obj_i, vert in enumerate(verts):
             #         nr.save_obj(osp.join(dump_folder, f'{obj_i}.obj'), vert,
             #                     torch.tensor(smpl.faces.astype(np.int64)))
-            break
+            # break
     eval_handler.finalize()
