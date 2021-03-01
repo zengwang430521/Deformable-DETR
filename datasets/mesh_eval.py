@@ -14,7 +14,7 @@ from models.camera import PerspectiveCamera
 import os.path as osp
 import torch
 import torchvision
-from smplx.body_models import SMPL
+# from smplx.body_models import SMPL
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,18 +75,22 @@ class MuPoTSEvalHandler(EvalHandler):
         extra_joints = [8, 5, 45, 46, 4, 7, 21, 19, 17, 16, 18, 20, 47, 48, 49, 50, 51, 52, 53, 24, 26, 25, 28, 27]
         joints = torch.tensor(openpose_joints + extra_joints, dtype=torch.int32)
         joint_mapper = JointMapper(joints)
-        smpl_params = dict(model_path='data/smpl',
-                           # model_folder='data/smpl',
-                           joint_mapper=joint_mapper,
-                           create_glb_pose=True,
-                           body_pose_param='identity',
-                           create_body_pose=True,
-                           create_betas=True,
-                           # create_trans=True,
-                           dtype=torch.float32,
-                           vposer_ckpt=None,
-                           gender='neutral')
-        self.smpl = SMPL(**smpl_params)
+        # smpl_params = dict(model_path='data/smpl',
+        #                    # model_folder='data/smpl',
+        #                    joint_mapper=joint_mapper,
+        #                    create_glb_pose=True,
+        #                    body_pose_param='identity',
+        #                    create_body_pose=True,
+        #                    create_betas=True,
+        #                    # create_trans=True,
+        #                    dtype=torch.float32,
+        #                    vposer_ckpt=None,
+        #                    gender='neutral')
+        # self.smpl = SMPL(**smpl_params)
+
+        self.smpl = SMPL('data/smpl')
+
+
         self.J_regressor = torch.from_numpy(np.load(JOINT_REGRESSOR_H36M)).float()
         self.result_list = list()
         self.result_list_2d = list()
@@ -96,6 +100,10 @@ class MuPoTSEvalHandler(EvalHandler):
         # self.collision_meter = AverageMeter('collision', ':.2f')
         # self.collision_volume = CollisionVolume(self.smpl.faces, grid_size=64).cuda()
         # self.coll_cnt = 0
+
+    def to(self, device):
+        self.smpl = self.smpl.to(device)
+        self.J_regressor = self.J_regressor.to(device)
 
     def handle(self, data_batch, pred_results):
         # # Evaluate collision metric
@@ -119,8 +127,15 @@ class MuPoTSEvalHandler(EvalHandler):
         device = pred_logit.device
         samples, targets = data_batch
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        img_size = targets[0]['size']
+
+        # img_size is the shape of the inputed image
+        img_size = targets[0]['size'].unsqueeze(0)
         img_size = img_size.flip(-1)                # img_size should be [w, h]
+
+        orig_size = targets[0]['orig_size'].unsqueeze(0)
+        orig_size = orig_size.flip(-1)
+
+
 
         pred_bboxes[:, 2:] += pred_bboxes[:, :2]
         pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
@@ -148,11 +163,10 @@ class MuPoTSEvalHandler(EvalHandler):
         pred_betas = pred_results['pred_smpl_shape'][valid]
         pred_rotmat = pred_results['pred_smpl_pose'][valid]
 
-        self.smpl = self.smpl.to(pred_rotmat.device)
         smpl_output = self.smpl(betas=pred_betas, body_pose=pred_rotmat[:, 1:],
                                 global_orient=pred_rotmat[:, 0].unsqueeze(1),
                                 pose2rot=False)
-        pred_vertices = smpl_output.vertices
+        pred_vertices = smpl_output.vertices.clone()
         pred_joints = smpl_output.joints
 
 
@@ -164,12 +178,12 @@ class MuPoTSEvalHandler(EvalHandler):
         # bboxes = pred_results['bboxes'][0][:, :4]
         # img = data_batch['img'].data[0][0].clone()
 
-        J_regressor_batch = self.J_regressor[None, :].expand(pred_vertices.shape[0], -1, -1).to(pred_vertices.device)
+        J_regressor_batch = self.J_regressor[None, :].expand(batch_size, -1, -1).to(pred_vertices.device)
         # Get 14 predicted joints from the SMPL mesh
         pred_keypoints_3d_smpl = torch.matmul(J_regressor_batch, pred_vertices)
         pred_pelvis_smpl = pred_keypoints_3d_smpl[:, [0], :].clone()
         self.result_list.append(
-            (pred_keypoints_3d_smpl[:, self.h36m_to_MPI] + pred_translation[:, None]).numpy())
+            (pred_keypoints_3d_smpl[:, self.h36m_to_MPI] + pred_translation[:, None]).cpu().numpy())
 
         batch_size = pred_keypoints_3d_smpl.shape[0]
         rotation_Is = torch.eye(3).unsqueeze(0).repeat(batch_size, 1, 1).to(pred_keypoints_3d_smpl.device)
@@ -179,20 +193,26 @@ class MuPoTSEvalHandler(EvalHandler):
         if self.viz_dir:
             # img = img.clone() * torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1) + torch.tensor(
             #     [0.485, 0.456, 0.406]).view(3, 1, 1)
-            img = samples.tensors
-            img_cv = img.clone().numpy()
+            img = samples.tensors[0]
+            img = img.clone() * torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)\
+                  + torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+            img_cv = img.clone().cpu().numpy()
             img_cv = (img_cv * 255).astype(np.uint8).transpose([1, 2, 0]).copy()
-            for kpts, bbox in zip(pred_keypoints_2d_smpl.numpy(), pred_bboxes):
+            for kpts, bbox in zip(pred_keypoints_2d_smpl.cpu().numpy(), pred_bboxes.cpu().numpy()):
                 img_cv = cv2.rectangle(img_cv, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (255, 0, 0), 2)
                 img_cv = draw_skeleton(img_cv, kpts[H36M_TO_J14, :2])
             # img_cv = draw_text(img_cv, {'mismatch': is_mismatch, 'error': str(error_smpl.mean(-1) * 1000)});
             img_cv = (img_cv / 255.)
-            fname = osp.basename(data_batch['img_meta'].data[0][0]['file_name'])
+            # fname = osp.basename(data_batch['img_meta'].data[0][0]['file_name'])
+            fname = '{}.jpg'.format(len(self.result_list_2d))
             plt.imsave(osp.join(self.viz_dir, fname), img_cv)
 
-        scale_factor = data_batch['img_meta'].data[0][0]['scale_factor']
+        # scale_factor is the scale factor between input image and origin image in dataset
+        # scale_factor = data_batch['img_meta'].data[0][0]['scale_factor']
+        scale_factor = img_size.float() / orig_size.float()
         raw_kpts2d = pred_keypoints_2d_smpl / scale_factor
-        self.result_list_2d.append(raw_kpts2d[:, self.h36m_to_MPI])
+
+        self.result_list_2d.append(raw_kpts2d[:, self.h36m_to_MPI].cpu().numpy())
         # return {'file_name': data_batch['img_meta'].data[0][0]['file_name'], 'pred_kpts3d': pred_keypoints_3d_smpl}
         return {'pred_kpts3d': pred_keypoints_3d_smpl}
 
@@ -227,60 +247,34 @@ def evaluate_smpl(model, data_loader, args, device):
     FOCAL_LENGTH = 1000
     eval_handler_mapper = dict(mupots=MuPoTSEvalHandler)
     eval_handler = eval_handler_mapper[args.eval_dataset](
-        writer=tqdm.write, viz_dir=viz_dir,
+        writer=tqdm.write, # viz_dir=viz_dir,
         FOCAL_LENGTH=FOCAL_LENGTH,
         work_dir='eval_results')
+    eval_handler.to(device)
 
     with torch.no_grad():
         for i, data_batch in enumerate(tqdm(data_loader)):
             samples, targets = data_batch
             samples = samples.to(device)
-            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+            # targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
             pred_results = model(samples)
-            eval_handler.handle(data_batch, pred_results)
+            save_pack = eval_handler(data_batch, pred_results)
+            # save_pack.update({'bbox_results': pred_results['bboxes']})
+            # if args.dump_pkl:
+            #     with open(osp.join(dump_dir, f"{save_pack['file_name']}.pkl"), 'wb') as f:
+            #         pickle.dump(save_pack, f)
 
-            if args.paper_dir:
-                os.makedirs(args.paper_dir, exist_ok=True)
-                img = denormalize(data_batch['img'].data[0][0].numpy())
-                verts = pred_results['pred_vertices'] + pred_results['pred_translation']
-                dump_folder = osp.join(args.paper_dir, file_name)
-                os.makedirs(dump_folder, exist_ok=True)
-                plt.imsave(osp.join(dump_folder, 'img.png'), img)
-                for obj_i, vert in enumerate(verts):
-                    nr.save_obj(osp.join(dump_folder, f'{obj_i}.obj'), vert,
-                                torch.tensor(smpl.faces.astype(np.int64)))
-
-            save_pack = eval_handler(data_batch, pred_results, use_gt=args.use_gt)
-            save_pack.update({'bbox_results': pred_results['bboxes']})
-            if args.dump_pkl:
-                with open(osp.join(dump_dir, f"{save_pack['file_name']}.pkl"), 'wb') as f:
-                    pickle.dump(save_pack, f)
-
-
-
-
-            file_name = data_batch['img_meta'].data[0][0]['file_name']
-            try:
-                bbox_results, pred_results = model(**data_batch, return_loss=False, use_gt_bboxes=args.use_gt)
-                pred_results['bboxes'] = bbox_results
-                if args.paper_dir:
-                    os.makedirs(args.paper_dir, exist_ok=True)
-                    img = denormalize(data_batch['img'].data[0][0].numpy())
-                    verts = pred_results['pred_vertices'] + pred_results['pred_translation']
-                    dump_folder = osp.join(args.paper_dir, file_name)
-                    os.makedirs(dump_folder, exist_ok=True)
-                    plt.imsave(osp.join(dump_folder, 'img.png'), img)
-                    for obj_i, vert in enumerate(verts):
-                        nr.save_obj(osp.join(dump_folder, f'{obj_i}.obj'), vert,
-                                    torch.tensor(smpl.faces.astype(np.int64)))
-
-                save_pack = eval_handler(data_batch, pred_results, use_gt=args.use_gt)
-                save_pack.update({'bbox_results': pred_results['bboxes']})
-                if args.dump_pkl:
-                    with open(osp.join(dump_dir, f"{save_pack['file_name']}.pkl"), 'wb') as f:
-                        pickle.dump(save_pack, f)
-            except Exception as e:
-                tqdm.write(f"Fail on {file_name}")
-                tqdm.write(str(e))
+            ##TODO: Add mesh saving codes
+            # if args.paper_dir:
+            #     os.makedirs(args.paper_dir, exist_ok=True)
+            #     img = denormalize(data_batch['img'].data[0][0].numpy())
+            #     verts = pred_results['pred_vertices'] + pred_results['pred_translation']
+            #     dump_folder = osp.join(args.paper_dir, file_name)
+            #     os.makedirs(dump_folder, exist_ok=True)
+            #     plt.imsave(osp.join(dump_folder, 'img.png'), img)
+            #     for obj_i, vert in enumerate(verts):
+            #         nr.save_obj(osp.join(dump_folder, f'{obj_i}.obj'), vert,
+            #                     torch.tensor(smpl.faces.astype(np.int64)))
+            break
     eval_handler.finalize()
