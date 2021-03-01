@@ -26,6 +26,33 @@ from models.smpl.viz import draw_skeleton, J24_TO_J14, get_bv_verts, plot_pose_H
 import os
 import pickle
 from tqdm import tqdm
+from models.pose_utils import reconstruction_error
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self, name, fmt=':f'):
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self):
+        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        return fmtstr.format(**self.__dict__)
+
 
 class EvalHandler(object):
     def __init__(self, writer=print, log_every=50, viz_dir='', FOCAL_LENGTH=1000, work_dir=''):
@@ -104,6 +131,7 @@ class MuPoTSEvalHandler(EvalHandler):
     def to(self, device):
         self.smpl = self.smpl.to(device)
         self.J_regressor = self.J_regressor.to(device)
+        return self
 
     def handle(self, data_batch, pred_results):
         # # Evaluate collision metric
@@ -116,7 +144,6 @@ class MuPoTSEvalHandler(EvalHandler):
         # # self.collision_meter.update(cur_collision_volume.item() * 1000.)
 
         FOCAL_LENGTH = self.FOCAL_LENGTH
-
 
         pred_logit = pred_results["pred_logits"]
         prob = pred_logit.sigmoid()
@@ -228,6 +255,119 @@ class MuPoTSEvalHandler(EvalHandler):
             result[i, :r.shape[0]] = r
             result_2d[i, :r.shape[0]] = r_2d
         scio.savemat(osp.join(self.work_dir, 'mupots.mat'), {'result': result, 'result_2d': result_2d})
+
+
+class H36MEvalHandler(EvalHandler):
+
+    def __init__(self, JOINT_REGRESSOR_H36M='data/J_regressor_h36m.npy', pattern='.60457274_', **kwargs):
+        super().__init__(**kwargs)
+        self.J_regressor = torch.from_numpy(np.load(JOINT_REGRESSOR_H36M)).float()
+        self.pattern = pattern
+        self.p1_meter = AverageMeter('P1', ':.2f')
+        self.p2_meter = AverageMeter('P2', ':.2f')
+        self.FOCAL_LENGTH = 1000
+
+    def handle(self, data_batch, pred_results, use_gt=False):
+        FOCAL_LENGTH = self.FOCAL_LENGTH
+
+        pred_logit = pred_results["pred_logits"]
+        prob = pred_logit.sigmoid()
+        valid = prob[..., 1] > prob[..., 0]
+        pred_bboxes = pred_results['pred_boxes'][valid]
+        batch_size = pred_bboxes.shape[0]
+
+        device = pred_logit.device
+        samples, targets = data_batch
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+        # img_size is the shape of the inputed image
+        img_size = targets[0]['size'].unsqueeze(0)
+        img_size = img_size.flip(-1)                # img_size should be [w, h]
+
+        orig_size = targets[0]['orig_size'].unsqueeze(0)
+        orig_size = orig_size.flip(-1)
+
+
+        pred_bboxes[:, 2:] += pred_bboxes[:, :2]
+        pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
+        center_pts = (pred_bboxes[..., :2] + pred_bboxes[..., 2:]) / 2
+        pred_camera = pred_results['pred_camera'][valid]
+
+        crop_translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(pred_camera.device)
+        crop_translation[..., :2] = pred_camera[..., 1:]
+        # We may detach it.
+        bboxes_size = torch.max(torch.abs(pred_bboxes[..., 0] - pred_bboxes[..., 2]),
+                                torch.abs(pred_bboxes[..., 1] - pred_bboxes[..., 3]))
+        crop_translation[..., 2] = 2 * FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
+        depth = 2 * FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
+        translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(
+            pred_camera.device)
+        translation[:, :-1] = depth[:, None] * \
+                              (center_pts + pred_camera[:, 1:] *
+                               bboxes_size.unsqueeze(-1) - img_size / 2) / FOCAL_LENGTH
+        translation[:, -1] = depth
+        pred_translation = translation
+
+
+        pred_betas = pred_results['pred_smpl_shape'][valid]
+        pred_rotmat = pred_results['pred_smpl_pose'][valid]
+
+        smpl_output = self.smpl(betas=pred_betas, body_pose=pred_rotmat[:, 1:],
+                                global_orient=pred_rotmat[:, 0].unsqueeze(1),
+                                pose2rot=False)
+        pred_vertices = smpl_output.vertices.clone()
+        pred_joints = smpl_output.joints
+
+
+
+
+
+
+
+
+        gt_keypoints_3d = targets[0]['joints_3d'].clone().repeat([pred_vertices.shape[0], 1, 1])
+        # gt_keypoints_3d = data_batch['gt_kpts3d'].data[0][0].clone().repeat([pred_vertices.shape[0], 1, 1])
+
+        gt_pelvis_smpl = gt_keypoints_3d[:, [14], :-1].clone()
+        gt_keypoints_3d = gt_keypoints_3d[:, J24_TO_J14, :-1].clone()
+        gt_keypoints_3d = gt_keypoints_3d - gt_pelvis_smpl
+
+        J_regressor_batch = self.J_regressor[None, :].expand(pred_vertices.shape[0], -1, -1).to(pred_vertices.device)
+        # Get 14 predicted joints from the SMPL mesh
+        pred_keypoints_3d_smpl = torch.matmul(J_regressor_batch, pred_vertices)
+        pred_pelvis_smpl = pred_keypoints_3d_smpl[:, [0], :].clone()
+        pred_keypoints_3d_smpl = pred_keypoints_3d_smpl[:, H36M_TO_J14, :]
+        pred_keypoints_3d_smpl = pred_keypoints_3d_smpl - pred_pelvis_smpl
+
+        ##FIXME: filename
+        file_name = data_batch['img_meta'].data[0][0]['file_name']
+
+        # Compute error metrics
+        # Absolute error (MPJPE)
+        error_smpl = torch.sqrt(((pred_keypoints_3d_smpl - gt_keypoints_3d) ** 2).sum(dim=-1)).mean(dim=-1)
+
+        mpjpe = float(error_smpl.min() * 1000)
+        self.p1_meter.update(mpjpe)
+
+        if self.pattern in file_name:
+            # Reconstruction error
+            r_error_smpl = reconstruction_error(pred_keypoints_3d_smpl.cpu().numpy(), gt_keypoints_3d.cpu().numpy(),
+                                                reduction=None)
+            r_error = float(r_error_smpl.min() * 1000)
+            self.p2_meter.update(r_error)
+        else:
+            r_error = -1
+
+        save_pack = {'file_name': file_name,
+                     'MPJPE': mpjpe,
+                     'r_error': r_error,
+                     'pred_rotmat': pred_results['pred_rotmat'],
+                     'pred_betas': pred_results['pred_betas'],
+                     }
+        return save_pack
+
+    def log(self):
+        self.writer(f'p1: {self.p1_meter.avg:.2f}mm, p2: {self.p2_meter.avg:.2f}mm')
 
 
 def evaluate_smpl(model, data_loader, args, device):

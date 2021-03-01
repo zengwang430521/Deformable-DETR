@@ -190,7 +190,9 @@ def reduce_dict(input_dict, average=True):
             values = torch.stack(values, dim=0)
             dist.all_reduce(values)
         except:
-            print(names)
+            for i in range(100):
+                print(names)
+            exit()
 
         if average:
             values /= world_size
