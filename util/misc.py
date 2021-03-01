@@ -184,10 +184,11 @@ def reduce_dict(input_dict, average=True):
             names.append(k)
             values.append(input_dict[k])
 
-        shape = values[0].shape[0]
-        for k, v in zip(names, values):
-            if v.shape[0] != shape:
-                print(k)
+        if len(values) > 0 :
+            shape = values[0].shape[0]
+            for k, v in zip(names, values):
+                if v.shape[0] != shape:
+                    print(k)
 
         values = torch.stack(values, dim=0)
         dist.all_reduce(values)
