@@ -446,7 +446,7 @@ class MySetCriterion(SetCriterion):
             losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes, **kwargs))
 
         # SMPL head loss
-        losses.update(self.loss_smpl(outputs, targets, indices, num_boxes))
+        # losses.update(self.loss_smpl(outputs, targets, indices, num_boxes))
 
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
