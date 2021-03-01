@@ -439,13 +439,14 @@ class SMPLLoss(nn.Module):
         if self.adversarial_cfg:
             pass
 
-        loss_dict.update({'loss_sdf': outputs["pred_camera"].new_zeros(1)})
+        tmp = outputs["pred_camera"].sum() * 0
+        loss_dict.update({'loss_sdf': tmp})
 
         # render Loss
         if self.nr_batch_rank:
             loss_dict.update(
-                {'loss_batch_rank': outputs["pred_camera"].new_zeros(1),
-                 'num_intruded_pixels': outputs["pred_camera"].new_zeros(1)})
+                {'loss_batch_rank': tmp,
+                 'num_intruded_pixels':tmp})
 
         if self.re_weight:
             for k, v in self.re_weight.items():
