@@ -146,8 +146,8 @@ class SMPLDataset(Dataset):
     def add_essential_keys(self, img_info):
         float_list = ['bboxes', 'kpts3d', 'kpts2d', 'pose', 'shape', 'trans']
         int_list = ['labels', 'has_smpl']
-        # num_persons = img_info['bboxes'].shape[0] if 'bboxes' in img_info else 1
-        num_persons = img_info['bboxes'].shape[0] if 'bboxes' in img_info else 0
+        num_persons = img_info['bboxes'].shape[0] if 'bboxes' in img_info else 1
+        # num_persons = img_info['bboxes'].shape[0] if 'bboxes' in img_info else 0
 
         for k in float_list:
             if k in img_info:
