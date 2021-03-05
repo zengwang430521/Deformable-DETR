@@ -359,7 +359,8 @@ def plot_pose_H36M(poses, x_poses=list(), inplace=True):
 
 
 def get_bv_verts(bboxes_t, verts_t, trans_t, img_shape, focal_length):
-    R_bv = torch.zeros(3, 3)
+    device = verts_t.device
+    R_bv = torch.zeros(3, 3).to(device)
     R_bv[0, 0] = R_bv[2, 1] = 1
     R_bv[1, 2] = -1
 
@@ -386,5 +387,5 @@ def get_bv_verts(bboxes_t, verts_t, trans_t, img_shape, focal_length):
     z_y_0 = (-dis_min[1]) * focal_length / (ratio_max * h) + torch.abs(
         dis_min[2])
     z = max(z_x, z_y, z_x_0, z_y_0)
-    verts_right = verts_tfar - p_center + torch.tensor([0, 0, z])
+    verts_right = verts_tfar - p_center + torch.tensor([0, 0, z]).to(device)
     return verts_right

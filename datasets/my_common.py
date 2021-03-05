@@ -397,7 +397,7 @@ def build_smpl_mix_dataset(image_set, args=None):
 
 
 def build_smpl_eval_dataset(dataset, args=None):
-    panoptic_root = ''
+    panoptic_root = '/home/wzeng/mydata/panoptic/'
     h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
     h36m_prefix = '/home/wzeng/mydata/MyH36MOrigin'
     mupots_root = "data/mupots-3d/"

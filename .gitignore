@@ -130,3 +130,5 @@ data
 *.pkl.json
 *.log.json
 work_dirs/
+
+eval_results

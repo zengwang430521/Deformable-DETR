@@ -29,5 +29,6 @@ pip install smplx
 pip install scikit-image
 pip install opencv-python
 
+pip install pyrender trimesh
 
 ln -s  /home/wzeng/mydata/mupots-3d data/mupots-3d
