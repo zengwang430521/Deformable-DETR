@@ -563,7 +563,8 @@ def build(args):
 
     if args.smpl:
         from .smpl_head import DETRsmpl
-        model = DETRsmpl(model, freeze_detr=(args.frozen_weights is not None))
+        model = DETRsmpl(model, freeze_detr=(args.frozen_weights is not None),
+                         head_type=args.smpl_head)
 
     matcher = build_matcher(args)
     weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef}

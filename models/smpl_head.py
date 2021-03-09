@@ -11,16 +11,12 @@
 This file provides the definition of the convolutional heads used to predict masks, as well as the losses
 """
 from __future__ import division
-
-import io
-from collections import defaultdict
-
+import numpy as np
+import h5py
+from .smpl_utils import rot6d_to_rotmat, batch_rodrigues
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PIL import Image
-
-import util.box_ops as box_ops
 from util.misc import NestedTensor, interpolate, nested_tensor_from_tensor_list
 
 try:
@@ -32,7 +28,7 @@ from .deformable_detr import inverse_sigmoid
 
 
 class DETRsmpl(nn.Module):
-    def __init__(self, detr, freeze_detr=False):
+    def __init__(self, detr, freeze_detr=False, head_type='hmr'):
         super().__init__()
         self.detr = detr
 
@@ -43,7 +39,13 @@ class DETRsmpl(nn.Module):
         hidden_dim, nheads = detr.transformer.d_model, detr.transformer.nhead
         # self.bbox_attention = MHAttentionMap(hidden_dim, hidden_dim, nheads, dropout=0)
         # self.mask_head = MaskHeadSmallConv(hidden_dim + nheads, [1024, 512, 256], hidden_dim)
-        self.smpl_head = SimpleHead(hidden_dim)
+        self.head_type = head_type
+        if self.head_type == 'hmr':
+            self.smpl_head = HMRHead(hidden_dim)
+        elif self.head_type == 'cmr':
+            self.smpl_head = CMRHead(hidden_dim)
+        else:
+            raise KeyError('Unknown smpl head type: {}'.format(self.head_type))
 
     def forward(self, samples: NestedTensor):
         """ The forward expects a NestedTensor, which consists of:
@@ -138,8 +140,6 @@ class DETRsmpl(nn.Module):
             out["pred_smpl_shape"] = smpl_para[1][-1]
             out["pred_camera"] = smpl_para[2][-1]
 
-
-
         return out
 
 
@@ -187,7 +187,48 @@ class FCResBlock(nn.Module):
 Definition of SMPL Parameter Regressor used for regressing the SMPL parameters from the 3D shape
 """
 
-class SimpleHead(nn.Module):
+
+class BaseSMPLHead(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.max_num = 20
+
+    def forward(self, x, pred_class):
+
+        stage, bs, num_query, channel = x.shape
+
+        # only the first K bbox for saving memory
+        topk_value, topk_idx = torch.topk(pred_class[..., 1], self.max_num, 2)
+        idx_stage = torch.arange(stage, device=x.device, dtype=torch.long)[:, None, None]
+        idx_bs = torch.arange(bs, device=x.device, dtype=torch.long)[None, :, None]
+        idx = (idx_stage * bs * num_query + idx_bs * num_query + topk_idx)
+        valid_top = torch.zeros([stage * bs * num_query], dtype=torch.bool, device=x.device)
+        valid_top[idx] = 1
+
+        # only foreground bbox
+        x = x.flatten(start_dim=0, end_dim=-2)
+        pred_class = pred_class.flatten(start_dim=0, end_dim=-2)
+        valid_class = pred_class[..., 1] > pred_class[..., 0]
+
+        valid = valid_class * valid_top
+
+        num_all = x.shape[0]
+        rotmat = x.new_zeros([num_all, 24, 3, 3])
+        betas = x.new_zeros([num_all, 10])
+        camera = x.new_zeros([num_all, 3])
+
+        rotmat[valid], betas[valid], camera[valid] = self.head_forward(x[valid])
+
+        rotmat = rotmat.view(stage, bs, num_query, 24, 3, 3)
+        betas = betas.view(stage, bs, num_query, 10)
+        camera = camera.view(stage, bs, num_query, 3)
+        return rotmat, betas, camera
+
+    def head_forward(self, x):
+        pass
+
+
+class CMRHead(BaseSMPLHead):
 
     def __init__(self, in_channels, use_cpu_svd=True):
         super().__init__()
@@ -232,32 +273,6 @@ class SimpleHead(nn.Module):
         rotmat = rotmat.to(orig_device)
         return rotmat, betas, camera
 
-    def forward(self, x, pred_class):
-        """Forward pass.
-        Input:
-            x: size = (B, 1723*6)
-        Returns:
-            SMPL pose parameters as rotation matrices: size = (B,24,3,3)
-            SMPL shape parameters: size = (B,10)
-        """
-
-        stage, bs, num_query, channel = x.shape
-        x = x.flatten(start_dim=0, end_dim=-2)
-        pred_class = pred_class.flatten(start_dim=0, end_dim=-2)
-        valid = pred_class[..., 1] > pred_class[..., 0]
-
-        num_all = x.shape[0]
-        rotmat = x.new_zeros([num_all, 24, 3, 3])
-        betas = x.new_zeros([num_all, 10])
-        camera = x.new_zeros([num_all, 3])
-
-        rotmat[valid], betas[valid], camera[valid] = self.head_forward(x[valid])
-
-        rotmat = rotmat.view(stage, bs, num_query, 24, 3, 3)
-        betas = betas.view(stage, bs, num_query, 10)
-        camera = camera.view(stage, bs, num_query, 3)
-        return rotmat, betas, camera
-
 
 def batch_svd(A):
     """Wrapper around torch.svd that works when the input is a batch of matrices."""
@@ -273,3 +288,71 @@ def batch_svd(A):
     S = torch.stack(S_list, dim=0)
     V = torch.stack(V_list, dim=0)
     return U, S, V
+
+
+class HMRHead(BaseSMPLHead):
+
+    def __init__(self, in_channels,
+                 init_param_file='data/neutral_smpl_mean_params.h5',
+                 implicity_size=-1, iteraration=3):
+        super().__init__()
+
+        # Load SMPL mean parameters
+        f = h5py.File(init_param_file, 'r')
+        init_grot = np.array([np.pi, 0., 0.])
+        init_pose = np.hstack([init_grot, f['pose'][3:]])
+        init_pose = torch.tensor(init_pose.astype('float32'))
+        init_rotmat = batch_rodrigues(init_pose.contiguous().view(-1, 3))
+        init_contrep = init_rotmat.view(-1, 3, 3)[:, :, ::2].contiguous().view(-1)
+
+        init_shape = torch.tensor(f['shape'][:].astype('float32'))
+        init_cam = torch.tensor([0.9, 0, 0])
+
+        self.register_buffer('init_contrep', init_contrep)
+        self.register_buffer('init_shape', init_shape)
+        self.register_buffer('init_cam', init_cam)
+        self.npose = init_rotmat.shape[0] * 6
+        # Multiply by 6 as we need to estimate two matrixes on each joins
+
+        self.in_channels = in_channels
+        if implicity_size < 0:
+            implicity_size = in_channels
+        self.implicity_size = implicity_size
+        self.iteration = iteraration
+
+        self.fc_blocks = nn.Sequential(
+            nn.Linear(self.in_channels + 2 * 72 + 10 + 3, self.implicity_size),
+            nn.ReLU(),
+            nn.Dropout(),
+            nn.Linear(self.implicity_size, self.implicity_size),
+            nn.Dropout(),
+            nn.Linear(self.implicity_size, self.npose + 10 + 3)
+        )
+        self.init_weights()
+
+    def head_forward(self, x):
+        batch_size = x.shape[0]
+
+        init_pose = self.init_contrep.view(1, -1).expand(batch_size, -1)
+        init_shape = self.init_shape.view(1, -1).expand(batch_size, -1)
+        init_cam = self.init_cam.view(1, -1).expand(batch_size, -1)
+
+        theta = torch.cat([init_pose, init_shape, init_cam], 1)
+        thetas = []
+        for _ in range(self.iteration):
+            total_inputs = torch.cat([x, theta], 1)
+            theta = theta + self.fc_blocks(total_inputs)
+            thetas.append(theta)
+
+        pred_pose = theta[:, :self.npose].contiguous()
+        pred_betas = theta[:, self.npose:self.npose + 10].contiguous()
+        pred_camera = theta[:, self.npose + 10:].contiguous()
+        pred_rotmat = rot6d_to_rotmat(pred_pose).view(batch_size, 24, 3, 3)
+        return pred_rotmat, pred_betas, pred_camera
+
+    def init_weights(self):
+        for n, p in self.named_parameters():
+            if 'weight' in n:
+                nn.init.xavier_uniform_(p)
+            if 'bias' in n:
+                nn.init.zeros_(p)
