@@ -191,7 +191,7 @@ Definition of SMPL Parameter Regressor used for regressing the SMPL parameters f
 class BaseSMPLHead(nn.Module):
     def __init__(self):
         super().__init__()
-        self.max_num = 20
+        self.max_num = 10
 
     def forward(self, x, pred_class):
 
