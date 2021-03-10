@@ -32,68 +32,73 @@ def crop(image, target, region):
     # should we do something wrt the original size?
     target["size"] = torch.tensor([h, w])
 
-    fields = ["labels", "area", "iscrowd"]
+    num_bbox = target['labels'].shape[0]
 
-    if "boxes" in target:
-        boxes = target["boxes"]
-        max_size = torch.as_tensor([w, h], dtype=torch.float32)
-        cropped_boxes = boxes - torch.as_tensor([j, i, j, i])
-        cropped_boxes = torch.min(cropped_boxes.reshape(-1, 2, 2), max_size)
-        cropped_boxes = cropped_boxes.clamp(min=0)
-        area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(dim=1)
-        target["boxes"] = cropped_boxes.reshape(-1, 4)
-        target["area"] = area
-        fields.append("boxes")
+    if num_bbox > 0:    # empty target do NOT need any process
 
-    if "masks" in target:
-        # FIXME should we update the area here if there are no boxes?
-        target['masks'] = target['masks'][:, i:i + h, j:j + w]
-        fields.append("masks")
+        fields = ["labels", "area", "iscrowd"]
 
-    # merged 24 keypoints
-    if "joints_2d" in target:
-        joints_2d = target["joints_2d"]
-        joints_2d_visible = target["joints_2d_visible"]
-        max_size = torch.as_tensor([w, h], dtype=torch.float32)
-        cropped_joints_2d = joints_2d - torch.as_tensor([j, i])[None, :]
-        cropped_joints_2d_visible = (joints_2d_visible *
-                                     (cropped_joints_2d < max_size).min(dim=-1)[0])
-        target["joints_2d"] = cropped_joints_2d
-        target["joints_2d_visible"] = cropped_joints_2d_visible
-        fields.append("joints_2d")
-        fields.append("joints_2d_visible")
-
-    if "joints_3d" in target:
-        fields.append("joints_3d")
-        fields.append("joints_3d_visible")
-    if "smpl_pose" in target:
-        fields.append("smpl_pose")
-        fields.append("smpl_shape")
-        fields.append("has_smpl")
-    if "trans" in target:
-        fields.append("trans")
-    if "camera" in target:
-        fields.append("camera")
-
-    if "scene" in target:
-        target["scene"] = target['scene'][i:i + h, j:j + w]
-
-    # remove elements for which the boxes or masks that have zero area
-    if "boxes" in target or "masks" in target:
-        # favor boxes selection when defining which elements to keep
-        # this is compatible with previous implementation
         if "boxes" in target:
-            cropped_boxes = target['boxes'].reshape(-1, 2, 2)
-            keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
-        else:
-            keep = target['masks'].flatten(1).any(1)
+            boxes = target["boxes"]
+            max_size = torch.as_tensor([w, h], dtype=torch.float32)
+            cropped_boxes = boxes - torch.as_tensor([j, i, j, i])
+            cropped_boxes = torch.min(cropped_boxes.reshape(-1, 2, 2), max_size)
+            cropped_boxes = cropped_boxes.clamp(min=0)
+            area = (cropped_boxes[:, 1, :] - cropped_boxes[:, 0, :]).prod(dim=1)
+            target["boxes"] = cropped_boxes.reshape(-1, 4)
+            target["area"] = area
+            fields.append("boxes")
 
-        for field in fields:
-            if len(target[field]) != len(keep):
-                print(field)
-                print(target[field])
-                print(keep)
-            target[field] = target[field][keep]
+        if "masks" in target:
+            # FIXME should we update the area here if there are no boxes?
+            target['masks'] = target['masks'][:, i:i + h, j:j + w]
+            fields.append("masks")
+
+        # merged 24 keypoints
+        if "joints_2d" in target:
+            joints_2d = target["joints_2d"]
+            joints_2d_visible = target["joints_2d_visible"]
+            max_size = torch.as_tensor([w, h], dtype=torch.float32)
+            cropped_joints_2d = joints_2d - torch.as_tensor([j, i])[None, :]
+            cropped_joints_2d_visible = (joints_2d_visible *
+                                         (cropped_joints_2d < max_size).min(dim=-1)[0])
+
+            target["joints_2d"] = cropped_joints_2d
+            target["joints_2d_visible"] = cropped_joints_2d_visible
+            fields.append("joints_2d")
+            fields.append("joints_2d_visible")
+
+        if "joints_3d" in target:
+            fields.append("joints_3d")
+            fields.append("joints_3d_visible")
+        if "smpl_pose" in target:
+            fields.append("smpl_pose")
+            fields.append("smpl_shape")
+            fields.append("has_smpl")
+        if "trans" in target:
+            fields.append("trans")
+        if "camera" in target:
+            fields.append("camera")
+
+        if "scene" in target:
+            target["scene"] = target['scene'][i:i + h, j:j + w]
+
+        # remove elements for which the boxes or masks that have zero area
+        if "boxes" in target or "masks" in target:
+            # favor boxes selection when defining which elements to keep
+            # this is compatible with previous implementation
+            if "boxes" in target:
+                cropped_boxes = target['boxes'].reshape(-1, 2, 2)
+                keep = torch.all(cropped_boxes[:, 1, :] > cropped_boxes[:, 0, :], dim=1)
+            else:
+                keep = target['masks'].flatten(1).any(1)
+
+            for field in fields:
+                if len(target[field]) != len(keep):
+                    print(field)
+                    print(target[field])
+                    print(keep)
+                target[field] = target[field][keep]
 
     return cropped_image, target
 

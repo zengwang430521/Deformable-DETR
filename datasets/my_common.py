@@ -113,6 +113,16 @@ class SMPLDataset(Dataset):
 
         # load annotations (and proposals)
         self.img_infos = self.load_annotations(ann_file)
+
+        # for i in range(len(self.img_infos)):
+        #     img_info = self.img_infos[i]
+        #     boxes = img_info['bboxes']
+        #     keep = (boxes[:, 3] > boxes[:, 1]) & (boxes[:, 2] > boxes[:, 0])
+        #
+        #     if keep.sum() == 0:
+        #         print(i)
+        #         print(img_info['filename'])
+
         self.square_bbox = square_bbox
         self.max_samples = max_samples
 
@@ -159,6 +169,14 @@ class SMPLDataset(Dataset):
                 img_info[k] = img_info[k].astype(np.int64).copy()
             else:
                 img_info[k] = get_default(k, num_persons)
+
+        # if num_persons == 0: # pose track has zero person image,causing a bug
+        #     num_persons = 1
+        #     for k in float_list:
+        #         img_info[k] = get_default(k, num_persons)
+        #     for k in int_list:
+        #         img_info[k] = get_default(k, num_persons)
+
         return img_info
 
     # # NOT USED
@@ -345,6 +363,7 @@ class SMPLDataset(Dataset):
         img_info = deepcopy(self.img_infos[idx])
         img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
         img_info = self.add_essential_keys(img_info)
+
         img, target = self.prepare(img, img_info)
         if self._transforms is not None:
             img, target = self._transforms(img, target)
@@ -361,31 +380,31 @@ def build_smpl_mix_dataset(image_set, args=None):
 
     if image_set == 'train':
         train_cfgs = [
-            # dict(
-            #     ann_file=mpii_root + 'rcnn/train.pkl',
-            #     img_prefix=mpii_root + 'images/',
-            #     transforms=smpl_common_transforms('train'),
-            # ),
+            dict(
+                ann_file=mpii_root + 'rcnn/train.pkl',
+                img_prefix=mpii_root + 'images/',
+                transforms=smpl_common_transforms('train'),
+            ),
             dict(
                 ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
                 img_prefix=coco_data_root + 'train2014/',
                 transforms=smpl_common_transforms('train'),
             ),
-            # dict(
-            #     ann_file=h36m_root + 'rcnn/train.pkl',
-            #     img_prefix=h36m_root,
-            #     transforms=smpl_common_transforms('train'),
-            # ),
+            dict(
+                ann_file=h36m_root + 'rcnn/train.pkl',
+                img_prefix=h36m_root,
+                transforms=smpl_common_transforms('train'),
+            ),
             dict(
                 ann_file=pose_track_root + 'rcnn/train.pkl',
                 img_prefix=pose_track_root,
                 transforms=smpl_common_transforms('train'),
             ),
-            # dict(
-            #     ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
-            #     img_prefix=mpi_inf_3dhp_root,
-            #     transforms=smpl_common_transforms('train'),
-            # )
+            dict(
+                ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
+                img_prefix=mpi_inf_3dhp_root,
+                transforms=smpl_common_transforms('train'),
+            )
         ]
         datasets = []
         for dataset_cfg in train_cfgs:
