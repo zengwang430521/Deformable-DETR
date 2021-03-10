@@ -439,8 +439,9 @@ class SMPLLoss(nn.Module):
         if self.adversarial_cfg:
             pass
 
-        tmp = outputs["pred_camera"].sum() * 0
-        loss_dict.update({'loss_sdf': tmp})
+        if self.use_sdf:
+            tmp = outputs["pred_camera"].sum() * 0
+            loss_dict.update({'loss_sdf': tmp})
 
         # render Loss
         if self.nr_batch_rank:
@@ -453,7 +454,8 @@ class SMPLLoss(nn.Module):
                 if k.startswith('adv_loss'):
                     loss_dict[k] *= v
                 else:
-                    loss_dict[f'loss_{k}'] *= v
+                    if f'loss{k}' in loss_dict:
+                        loss_dict[f'loss_{k}'] *= v
         return loss_dict
 
     def forward(self,
@@ -598,21 +600,22 @@ class SMPLLoss(nn.Module):
             )
 
         # SDF LOSS
-        # best_idxs = select_index(idxs_in_batch[valid_boxes], pose_idx[valid_boxes].int()[:, 0],
-        #                          bboxes_confidence[valid_boxes])
+        if self.use_sdf:
+            # best_idxs = select_index(idxs_in_batch[valid_boxes], pose_idx[valid_boxes].int()[:, 0],
+            #                          bboxes_confidence[valid_boxes])
 
-        bboxes_confidence = outputs["pred_logits"][idx][:, 1]
-        best_idxs = select_index(idxs_in_batch[valid_boxes, None], pose_idx[valid_boxes].int(),
-                                 bboxes_confidence[valid_boxes])
-        sdf_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
-        for bid, ids in enumerate(best_idxs):
-            if len(ids) <= 1:
-                continue
-            ids = torch.tensor(ids)
-            sdf_loss[bid] = self.sdf_loss(pred_vertices[valid_boxes][ids], translation[valid_boxes][ids])
-        loss_dict.update({
-            'loss_sdf': sdf_loss.sum() if self.use_sdf else sdf_loss.sum().detach() * 1e-4
-        })
+            bboxes_confidence = outputs["pred_logits"][idx][:, 1]
+            best_idxs = select_index(idxs_in_batch[valid_boxes, None], pose_idx[valid_boxes].int(),
+                                     bboxes_confidence[valid_boxes])
+            sdf_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
+            for bid, ids in enumerate(best_idxs):
+                if len(ids) <= 1:
+                    continue
+                ids = torch.tensor(ids)
+                sdf_loss[bid] = self.sdf_loss(pred_vertices[valid_boxes][ids], translation[valid_boxes][ids])
+            loss_dict.update({
+                'loss_sdf': sdf_loss.sum() if self.use_sdf else sdf_loss.sum().detach() * 1e-4
+            })
 
         # render Loss
         if self.nr_batch_rank:
@@ -705,7 +708,8 @@ class SMPLLoss(nn.Module):
                 if k.startswith('adv_loss'):
                     loss_dict[k] *= v
                 else:
-                    loss_dict[f'loss_{k}'] *= v
+                    if f'loss{k}' in loss_dict:
+                        loss_dict[f'loss_{k}'] *= v
 
         return loss_dict
 

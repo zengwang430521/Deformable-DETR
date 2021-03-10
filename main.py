@@ -90,8 +90,9 @@ def get_args_parser():
     # * SMPL
     parser.add_argument('--smpl', action='store_true',
                         help="Train smpl head if the flag is provided")
-    parser.add_argument('--smpl_head', default='hmr', type=str,
-                        help="SMPL head type")
+    parser.add_argument('--smpl_head', default='hmr', type=str, help="SMPL head type")
+    parser.add_argument('--sdf', action='store_true', help="SDF loss")
+    parser.add_argument('--render', action='store_true', help="renderer loss")
 
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',

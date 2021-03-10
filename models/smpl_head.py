@@ -230,6 +230,7 @@ class BaseSMPLHead(nn.Module):
         camera = camera.view(stage, bs, num_query, 3)
         return rotmat, betas, camera
 
+
 class CMRHead(BaseSMPLHead):
 
     def __init__(self, in_channels, use_cpu_svd=True):

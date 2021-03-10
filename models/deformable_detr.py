@@ -403,7 +403,7 @@ class MySetCriterion(SetCriterion):
         2) we supervise each pair of matched ground-truth / prediction (supervise class and box)
     """
 
-    def __init__(self, num_classes, matcher, weight_dict, losses, focal_alpha=0.25):
+    def __init__(self, args, num_classes, matcher, weight_dict, losses, focal_alpha=0.25):
         """ Create the criterion.
         Parameters:
             num_classes: number of object categories, omitting the special no-object category
@@ -414,7 +414,7 @@ class MySetCriterion(SetCriterion):
         """
         super().__init__(num_classes, matcher, weight_dict, losses, focal_alpha)
         from .smpl_loss import SMPLLoss
-        self.smpl_criterion = SMPLLoss()
+        self.smpl_criterion = SMPLLoss(use_sdf=args.sdf, nr_batch_rank=args.render)
 
     def loss_smpl(self, outputs, targets, indices, num_boxes):
         # t = 0
@@ -595,7 +595,7 @@ def build(args):
         weight_dict["loss_keypoints_3d_smpl"] = args.key3D_loss_coef
         weight_dict["loss_batch_rank"] = args.br_loss_coef
         weight_dict["loss_sdf"] = args.sdf_loss_coef
-        criterion = MySetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
+        criterion = MySetCriterion(args, num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
     else:
         # num_classes, matcher, weight_dict, losses, focal_alpha=0.25
         criterion = SetCriterion(num_classes, matcher, weight_dict, losses, focal_alpha=args.focal_alpha)
