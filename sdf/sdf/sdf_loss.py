@@ -76,7 +76,8 @@ class SDFLoss(nn.Module):
         boxes_scale = (1+scale_factor) * 0.5*(boxes[:,1] - boxes[:,0]).max(dim=-1)[0][:,None,None]
         with torch.no_grad():
             vertices_centered = vertices - boxes_center
-            vertices_centered_scaled = vertices_centered / (boxes_scale)
+            vertices_centered_scaled = vertices_centered / (boxes_scale + 1e-8)
+            print(boxes_scale)
             assert(vertices_centered_scaled.min() >= -1)
             assert(vertices_centered_scaled.max() <= 1)
             phi = self.sdf(self.faces, vertices_centered_scaled)

@@ -517,6 +517,12 @@ class SMPLLoss(nn.Module):
         pred_vertices = smpl_output.vertices
         pred_joints = smpl_output.joints
 
+        # smpl_t = self.smpl(betas=pred_betas[[0]] * 0, body_pose=pred_rotmat[[0], 1:]*0,
+        #               global_orient=pred_rotmat[[0], 0].unsqueeze(1)*0,
+        #               pose2rot=False)
+        # v_t = smpl_t.vertices
+        # t = v_t.max(dim=1)[0] - v_t.min(dim=1)[0]
+
         # LOAD GT
         gt_pose = torch.cat([t['smpl_pose'][i] for t, (_, i) in zip(targets, indices)], dim=0)
         gt_shape = torch.cat([t['smpl_shape'][i] for t, (_, i) in zip(targets, indices)], dim=0)

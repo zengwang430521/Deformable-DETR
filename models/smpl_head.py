@@ -212,21 +212,23 @@ class BaseSMPLHead(nn.Module):
 
         valid = valid_class * valid_top
 
+        valid[:] = True     # for debug
+
         num_all = x.shape[0]
-        rotmat = x.new_zeros([num_all, 24, 3, 3])
+        # rotmat = x.new_zeros([num_all, 24, 3, 3])
+        rotmat = torch.eye(3, dtype=x.dtype, device=x.device)[None, None, :, :].repeat([num_all, 24, 1, 1])
         betas = x.new_zeros([num_all, 10])
         camera = x.new_zeros([num_all, 3])
+        camera[:, 0] = 1
 
+        # forward the head
         rotmat[valid], betas[valid], camera[valid] = self.head_forward(x[valid])
+
 
         rotmat = rotmat.view(stage, bs, num_query, 24, 3, 3)
         betas = betas.view(stage, bs, num_query, 10)
         camera = camera.view(stage, bs, num_query, 3)
         return rotmat, betas, camera
-
-    def head_forward(self, x):
-        pass
-
 
 class CMRHead(BaseSMPLHead):
 
