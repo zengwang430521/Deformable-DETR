@@ -59,7 +59,7 @@ class SMPL(_SMPL):
         # make it compatible with zero batch_size
         betas = kwargs['betas']
         batch_size = kwargs['betas'].shape[0]
-        if batch_size:
+        if batch_size > 0:
             smpl_output = super(SMPL, self).forward(*args, **kwargs)
             extra_joints = vertices2joints(self.J_regressor_extra, smpl_output.vertices)
             joints = torch.cat([smpl_output.joints, extra_joints], dim=1)
@@ -77,6 +77,7 @@ class SMPL(_SMPL):
                                  joints=betas.new_zeros([0, 24, 3]),
                                  betas=betas.new_zeros([0, 10]),
                                  full_pose=None)
+            print('batch size 0 for SMPL input')
 
         return output
 

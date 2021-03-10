@@ -16,6 +16,11 @@ class SDFLoss(nn.Module):
 
     @torch.no_grad()
     def get_bounding_boxes(self, vertices):
+
+        # # my codes for bounding boxes
+        # boxes = torch.stack([vertices.min(dim=1)[0], vertices.max(dim=1)[0]], dim=1)
+        # return boxes
+
         num_people = vertices.shape[0]
         boxes = torch.zeros(num_people, 2, 3, device=vertices.device)
         for i in range(num_people):
@@ -71,7 +76,7 @@ class SDFLoss(nn.Module):
         boxes_scale = (1+scale_factor) * 0.5*(boxes[:,1] - boxes[:,0]).max(dim=-1)[0][:,None,None]
         with torch.no_grad():
             vertices_centered = vertices - boxes_center
-            vertices_centered_scaled = vertices_centered / boxes_scale
+            vertices_centered_scaled = vertices_centered / (boxes_scale + 1e-8)
             assert(vertices_centered_scaled.min() >= -1)
             assert(vertices_centered_scaled.max() <= 1)
             phi = self.sdf(self.faces, vertices_centered_scaled)

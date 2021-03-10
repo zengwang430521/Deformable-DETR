@@ -127,306 +127,306 @@ class SMPLLoss(nn.Module):
         src_idx = torch.cat([src for (src, _) in indices])
         return batch_idx, src_idx
 
-    def forward_old(self,
-                outputs,
-                targets,
-                indices,
-                num_boxes,
-                reduction_override=None,
-                # bboxes_confidence=None
-                ):
-        """
-
-        :param pred: SMPL parameters with 24*6+10+3
-        :param target: same as pred
-        :param weight:
-        :param avg_factor:
-        :param reduction_override:
-        :param kwargs:
-        :param bboxes_confidence:
-        :return: loss: dict. All the value whose keys contain 'loss' will be summed up.
-        """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (reduction_override if reduction_override else self.reduction)
-
-        # pred_rotmat = pred['pred_rotmat']
-        # pred_camera = pred['pred_camera']
-        # pred_joints = pred['pred_joints']
-        # pred_vertices = pred['pred_vertices']
-        # pred_betas = pred['pred_betas']
-        idx = self._get_src_permutation_idx(indices)
-
-        num_smpl = idx[0].shape[0]
-        if not num_smpl:
-            loss_dict = {'loss_keypoints_smpl': outputs["pred_camera"].sum() * 0,
-                         'loss_keypoints_3d_smpl': outputs["pred_smpl_shape"].sum() * 0,
-                         'loss_shape_smpl': outputs["pred_smpl_shape"].sum() * 0,
-                         'loss_regr_pose': outputs["pred_smpl_pose"].sum() * 0,
-                         'loss_regr_betas': outputs["pred_smpl_shape"].sum() * 0,
-                         }
-
-            if self.adversarial_cfg:
-                pass
-
-            loss_dict.update({'loss_sdf': outputs["pred_camera"].new_zeros(1)})
-
-            # render Loss
-            if self.nr_batch_rank:
-                loss_dict.update(
-                    {'loss_batch_rank': outputs["pred_camera"].new_zeros(1),
-                     'num_intruded_pixels': outputs["pred_camera"].new_zeros(1)})
-
-            if self.re_weight:
-                for k, v in self.re_weight.items():
-                    if k.startswith('adv_loss'):
-                        loss_dict[k] *= v
-                    else:
-                        loss_dict[f'loss_{k}'] *= v
-            return loss_dict
-
-        pred_rotmat = outputs["pred_smpl_pose"][idx]
-        pred_betas = outputs["pred_smpl_shape"][idx]
-        pred_camera = outputs["pred_camera"][idx]
-        smpl_output = self.smpl(betas=pred_betas, body_pose=pred_rotmat[:, 1:],
-                                global_orient=pred_rotmat[:, 0].unsqueeze(1),
-                                pose2rot=False)
-        pred_vertices = smpl_output.vertices
-        pred_joints = smpl_output.joints
-
-        # gt_rotmat = target['gt_rotmat']  # It's not rotmat actually. This is a (B, 24, 3) tensor.
-        # gt_shape = target['gt_shape']
-        # gt_camera = target['gt_camera']
-        # gt_keypoints_2d = target['gt_keypoints_2d']
-        # gt_keypoints_3d = target['gt_keypoints_3d']
-        # has_smpl = target['has_smpl']
-        # gt_vertices = target['gt_vertices']
-
-        gt_pose = torch.cat([t['smpl_pose'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_shape = torch.cat([t['smpl_shape'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        # gt_camera = torch.cat([t['camera'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_joints_2d = torch.cat([t['joints_2d'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_joints_2d_visible = torch.cat([t['joints_2d_visible'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_keypoints_2d = torch.cat([gt_joints_2d, gt_joints_2d_visible[:, :, None]], dim=-1)
-        gt_joints_3d = torch.cat([t['joints_3d'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_joints_3d_visible = torch.cat([t['joints_3d_visible'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        gt_keypoints_3d = torch.cat([gt_joints_3d, gt_joints_3d_visible[:, :, None]], dim=-1)
-        del gt_joints_2d, gt_joints_2d_visible, gt_joints_3d, gt_joints_3d_visible
-        has_smpl = torch.cat([t['has_smpl'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-
-        smpl_gt = self.smpl(betas=gt_shape, body_pose=gt_pose[:, 1:],
-                            global_orient=gt_pose[:, None, 0], pose2rot=True)
-        gt_vertices = smpl_gt.vertices
-
-        # pred_bboxes = target['pred_bboxes']
-        pred_bboxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-
-        # raw_images = target['raw_images']
-        # img_meta = target['img_meta']
-        # ori_shape = [i['ori_shape'] for i in img_meta]
-        ori_shape = [t['orig_size'] for t in targets]
-
-        # idxs_in_batch = target['idxs_in_batch']
-        idxs_in_batch = idx[0]
-
-        # pose_idx = target['pose_idx']
-        # pose_idx = idx[1]
-        pose_idx = torch.cat([i for (_, i) in indices], dim=0).to(pred_bboxes.device)
-
-        # scene = target['scene']
-        # scene = None
-        scene = [t["scene"] for t in targets]
-
-        batch_size = pred_joints.shape[0]
-
-        # if self.pad_size:
-        #     img_pad_shape = torch.tensor([i['pad_shape'][:2] for i in img_meta], dtype=torch.float32).to(
-        #         pred_joints.device)
-        #     img_size = img_pad_shape[idxs_in_batch[:, 0].long()]
-        # else:
-        #     img_size = torch.zeros(batch_size, 2).to(pred_joints.device)
-        #     img_size += torch.tensor(raw_images.shape[:-3:-1], dtype=img_size.dtype).to(img_size.device)
-
-        img_shape = torch.stack([t['size'] for t in targets], dim=0)
-        img_size = img_shape[idxs_in_batch]
-        # img_size should be [w, h]
-        img_size = img_size.flip(-1)
-
-        pred_bboxes[:, 2:] += pred_bboxes[:, :2]
-        pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
-
-        center_pts = (pred_bboxes[..., :2] + pred_bboxes[..., 2:]) / 2
-        crop_translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(
-            pred_joints.device)
-        crop_translation[..., :2] = pred_camera[..., 1:]
-        # We may detach it.
-        bboxes_size = torch.max(torch.abs(pred_bboxes[..., 0] - pred_bboxes[..., 2]),
-                                torch.abs(pred_bboxes[..., 1] - pred_bboxes[..., 3]))
-        valid_boxes = (torch.abs(pred_bboxes[..., 0] - pred_bboxes[..., 2]) > 5) & \
-                      (torch.abs(pred_bboxes[..., 1] - pred_bboxes[..., 3]) > 5)
-        crop_translation[..., 2] = 2 * self.FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
-        rotation_Is = torch.eye(3).unsqueeze(0).repeat(batch_size, 1, 1).to(pred_joints.device)
-        depth = 2 * self.FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
-        translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(
-            pred_joints.device)
-        translation[:, :-1] = depth[:, None] * (center_pts + pred_camera[:, 1:] * bboxes_size.unsqueeze(
-            -1) - img_size / 2) / self.FOCAL_LENGTH
-        translation[:, -1] = depth
-        focal_length = self.FOCAL_LENGTH * torch.ones_like(depth)
-        # pred_joints_translated = pred_joints + translation[:, None, :]
-        pred_keypoints_2d_smpl = perspective_projection(pred_joints,
-                                                        rotation_Is,
-                                                        translation,
-                                                        focal_length,
-                                                        img_size / 2)
-        gt_keypoints_2d_orig = gt_keypoints_2d.clone()
-        pred_keypoints_2d_smpl_orig = pred_keypoints_2d_smpl.clone()
-        if self.normalize_kpts:
-            scale_w = torch.clamp(pred_bboxes[..., 2] - pred_bboxes[..., 0], 1, img_size[..., 0].max())
-            scale_h = torch.clamp(pred_bboxes[..., 3] - pred_bboxes[..., 1], 1, img_size[..., 1].max())
-            bboxes_scale = torch.stack([scale_w, scale_h], dim=1)
-            gt_keypoints_2d[..., :2] = (gt_keypoints_2d[..., :2] - center_pts.unsqueeze(1)) / bboxes_scale.unsqueeze(1)
-            pred_keypoints_2d_smpl = (pred_keypoints_2d_smpl - center_pts.unsqueeze(1)) / bboxes_scale.unsqueeze(1)
-        else:
-            pred_keypoints_2d_smpl = pred_keypoints_2d_smpl / img_size.unsqueeze(1)
-            gt_keypoints_2d[:, :, :-1] = gt_keypoints_2d[:, :, :-1] / img_size.unsqueeze(1)
-        loss_keypoints_smpl, error_ranks = self.keypoint_loss(pred_keypoints_2d_smpl[valid_boxes],
-                                                              gt_keypoints_2d[valid_boxes])
-
-        loss_keypoints_3d_smpl = self.keypoint_3d_loss(pred_joints[valid_boxes], gt_keypoints_3d[valid_boxes])
-        loss_shape_smpl = self.shape_loss(pred_vertices[valid_boxes], gt_vertices[valid_boxes], has_smpl[valid_boxes])
-        loss_regr_pose, loss_regr_betas = self.smpl_losses(pred_rotmat[valid_boxes], pred_betas[valid_boxes],
-                                                           gt_pose[valid_boxes], gt_shape[valid_boxes],
-                                                           has_smpl[valid_boxes])
-
-        loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl * 4, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
-                     'loss_shape_smpl': loss_shape_smpl, 'loss_regr_pose': loss_regr_pose,
-                     'loss_regr_betas': loss_regr_betas * 0.01,
-                     # 'img$raw_images': raw_images.detach(),
-                     # 'img$idxs_in_batch': idxs_in_batch.detach(),
-                     # 'img$pose_idx': pose_idx.detach(),
-                     # 'img$pred_vertices': pred_vertices.detach(),
-                     # 'img$translation': translation.detach(), 'img$error_rank': -bboxes_confidence.detach(),
-                     # 'img$pred_bboxes': pred_bboxes.detach(),
-                     # 'img$pred_keypoints_2d_smpl': (pred_keypoints_2d_smpl_orig[:, -24:, :]).detach().clone(),
-                     # 'img$gt_keypoints_2d': gt_keypoints_2d_orig.detach().clone(),
-                     }
-
-        if self.adversarial_cfg:
-            valid_batch_size = pred_rotmat[valid_boxes].shape[0]
-            pred_pose_shape = torch.cat([pred_rotmat[valid_boxes].view(valid_batch_size, -1), pred_betas[valid_boxes]],
-                                        dim=1)
-            loss_dict.update(
-                {'pred_pose_shape': pred_pose_shape}
-            )
-
-        # SDF LOSS
-        # best_idxs = select_index(idxs_in_batch[valid_boxes], pose_idx[valid_boxes].int()[:, 0],
-        #                          bboxes_confidence[valid_boxes])
-
-        bboxes_confidence = outputs["pred_logits"][idx][:, 1]
-        best_idxs = select_index(idxs_in_batch[valid_boxes, None], pose_idx[valid_boxes].int(),
-                                 bboxes_confidence[valid_boxes])
-        sdf_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
-        for bid, ids in enumerate(best_idxs):
-            if len(ids) <= 1:
-                continue
-            ids = torch.tensor(ids)
-            sdf_loss[bid] = self.sdf_loss(pred_vertices[valid_boxes][ids], translation[valid_boxes][ids])
-        loss_dict.update({
-            'loss_sdf': sdf_loss.sum() if self.use_sdf else sdf_loss.sum().detach() * 1e-4
-        })
-
-        # render Loss
-        if self.nr_batch_rank:
-            device = pred_vertices.device
-            batch_rank_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
-            num_intruded_pixels = torch.zeros(len(best_idxs)).to(pred_vertices.device)
-            erode_mask_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
-
-            for (bid, ids), img_size_t in zip(enumerate(best_idxs), img_shape):
-                img_size_t = img_size_t.flip(-1)  # [w, h]
-                image_size_t = max(img_size_t)
-                self.neural_renderer.image_size = image_size_t.item()
-
-                K = torch.eye(3, device=device)
-                K[0, 0] = K[1, 1] = self.FOCAL_LENGTH
-                K[2, 2] = 1
-                K[1, 2] = K[0, 2] = image_size_t / 2  # Because the neural renderer only support squared images
-                K = K.unsqueeze(0)  # Our batch size is 1
-                R = torch.eye(3, device=device).unsqueeze(0)
-                t = torch.zeros(3, device=device).unsqueeze(0)
-
-                if len(ids) <= 1 or scene[bid].max() < 1:
-                    continue
-                ids = torch.tensor(ids)
-                verts = pred_vertices[valid_boxes][ids] + translation[valid_boxes][ids].unsqueeze(
-                    1)  # num_personx6890x3
-                # cur_pose_idxs = pose_idx[valid_boxes][ids, 0]
-                cur_pose_idxs = pose_idx[valid_boxes][ids]
-                with torch.no_grad():
-                    pose_idxs_int = cur_pose_idxs.int()
-                    has_mask_gt = torch.zeros_like(pose_idxs_int)
-                    for has_mask_idx, cur_pid in enumerate(pose_idxs_int):
-                        has_mask_gt[has_mask_idx] = 1 if torch.sum(scene[bid] == (cur_pid + 1).item()) > 0 else 0
-
-                if has_mask_gt.sum() < 1:
-                    continue
-
-                verts = verts[has_mask_gt > 0]
-                cur_pose_idxs = cur_pose_idxs[has_mask_gt > 0]
-
-                bs, nv = verts.shape[:2]
-                face_tensor = torch.tensor(self.smpl.faces.astype(np.int64), dtype=torch.long,
-                                           device=device).unsqueeze_(0).repeat([bs, 1, 1])
-                bs, nf = face_tensor.shape[:2]
-                textures = torch.ones_like(face_tensor).float() + cur_pose_idxs.to(device)[:, None, None]
-                textures = textures[:, :, None, None, None, :]
-                rgb, depth, mask = self.neural_renderer(verts, face_tensor.int(), textures=textures, K=K, R=R, t=t,
-                                                        dist_coeffs=torch.tensor([[0., 0., 0., 0., 0.]], device=device))
-
-                w_diff, h_diff = (image_size_t - img_size_t[0]) // 2, (image_size_t - img_size_t[1]) // 2
-                # predicted_depth = depth[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
-                # predicted_mask = mask[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
-                predicted_depth = depth[:, h_diff:h_diff + img_size_t[1], w_diff:w_diff + img_size_t[0]]
-                predicted_mask = mask[:, h_diff:h_diff + img_size_t[1], w_diff:w_diff + img_size_t[0]]
-
-                with torch.no_grad():
-                    gt_foreground = scene[bid] > 0
-                    # foreground_select = (cur_pose_idxs.round().int() + 1)[:, None, None] == scene[bid].int()
-                    foreground_select = (cur_pose_idxs.int() + 1)[:, None, None] == scene[bid].int()
-
-                    intruded_parts_mask = torch.prod(predicted_mask, dim=0)
-                    supervising_mask = intruded_parts_mask.unsqueeze(0).float() * gt_foreground.unsqueeze(0).float() * (
-                        ~foreground_select).float()
-                    if supervising_mask.norm() == 0:  # No ordinal relationship errors is detected.
-                        continue
-
-                gt_closest_depth_multi = torch.zeros_like(predicted_depth)
-                gt_closest_depth_multi[foreground_select] += predicted_depth[foreground_select]
-                gt_closest_depth = gt_closest_depth_multi.sum(0)
-
-                gt_closest_depth = gt_closest_depth.repeat([bs, 1, 1])
-                ordinal_distance = (gt_closest_depth - predicted_depth) * supervising_mask
-                penalize_ranks = torch.log(1. + torch.exp(ordinal_distance)) * supervising_mask
-                # To avoid instable gradient:
-                if torch.sum(ordinal_distance > 10) > 0:
-                    penalize_ranks[ordinal_distance.detach() > 10] = ordinal_distance[ordinal_distance.detach() > 10]
-                    print(f'{torch.sum(ordinal_distance > 10)} pixels found to be greater than 10 in batch rank loss')
-                batch_rank_loss[bid] = penalize_ranks.mean()
-                num_intruded_pixels[bid] = supervising_mask.sum()
-
-            # loss_dict.update({'loss_batch_rank': batch_rank_loss, 'num_intruded_pixels': num_intruded_pixels})
-            loss_dict.update(
-                {'loss_batch_rank': batch_rank_loss.mean(), 'num_intruded_pixels': num_intruded_pixels.mean()})
-
-        if self.re_weight:
-            for k, v in self.re_weight.items():
-                if k.startswith('adv_loss'):
-                    loss_dict[k] *= v
-                else:
-                    loss_dict[f'loss_{k}'] *= v
-
-        return loss_dict
+    # def forward0(self,
+    #             outputs,
+    #             targets,
+    #             indices,
+    #             num_boxes,
+    #             reduction_override=None,
+    #             # bboxes_confidence=None
+    #             ):
+    #     """
+    #
+    #     :param pred: SMPL parameters with 24*6+10+3
+    #     :param target: same as pred
+    #     :param weight:
+    #     :param avg_factor:
+    #     :param reduction_override:
+    #     :param kwargs:
+    #     :param bboxes_confidence:
+    #     :return: loss: dict. All the value whose keys contain 'loss' will be summed up.
+    #     """
+    #     assert reduction_override in (None, 'none', 'mean', 'sum')
+    #     reduction = (reduction_override if reduction_override else self.reduction)
+    #
+    #     # pred_rotmat = pred['pred_rotmat']
+    #     # pred_camera = pred['pred_camera']
+    #     # pred_joints = pred['pred_joints']
+    #     # pred_vertices = pred['pred_vertices']
+    #     # pred_betas = pred['pred_betas']
+    #     idx = self._get_src_permutation_idx(indices)
+    #
+    #     num_smpl = idx[0].shape[0]
+    #     if not num_smpl:
+    #         loss_dict = {'loss_keypoints_smpl': outputs["pred_camera"].sum() * 0,
+    #                      'loss_keypoints_3d_smpl': outputs["pred_smpl_shape"].sum() * 0,
+    #                      'loss_shape_smpl': outputs["pred_smpl_shape"].sum() * 0,
+    #                      'loss_regr_pose': outputs["pred_smpl_pose"].sum() * 0,
+    #                      'loss_regr_betas': outputs["pred_smpl_shape"].sum() * 0,
+    #                      }
+    #
+    #         if self.adversarial_cfg:
+    #             pass
+    #
+    #         loss_dict.update({'loss_sdf': outputs["pred_camera"].new_zeros(1)})
+    #
+    #         # render Loss
+    #         if self.nr_batch_rank:
+    #             loss_dict.update(
+    #                 {'loss_batch_rank': outputs["pred_camera"].new_zeros(1),
+    #                  'num_intruded_pixels': outputs["pred_camera"].new_zeros(1)})
+    #
+    #         if self.re_weight:
+    #             for k, v in self.re_weight.items():
+    #                 if k.startswith('adv_loss'):
+    #                     loss_dict[k] *= v
+    #                 else:
+    #                     loss_dict[f'loss_{k}'] *= v
+    #         return loss_dict
+    #
+    #     pred_rotmat = outputs["pred_smpl_pose"][idx]
+    #     pred_betas = outputs["pred_smpl_shape"][idx]
+    #     pred_camera = outputs["pred_camera"][idx]
+    #     smpl_output = self.smpl(betas=pred_betas, body_pose=pred_rotmat[:, 1:],
+    #                             global_orient=pred_rotmat[:, 0].unsqueeze(1),
+    #                             pose2rot=False)
+    #     pred_vertices = smpl_output.vertices
+    #     pred_joints = smpl_output.joints
+    #
+    #     # gt_rotmat = target['gt_rotmat']  # It's not rotmat actually. This is a (B, 24, 3) tensor.
+    #     # gt_shape = target['gt_shape']
+    #     # gt_camera = target['gt_camera']
+    #     # gt_keypoints_2d = target['gt_keypoints_2d']
+    #     # gt_keypoints_3d = target['gt_keypoints_3d']
+    #     # has_smpl = target['has_smpl']
+    #     # gt_vertices = target['gt_vertices']
+    #
+    #     gt_pose = torch.cat([t['smpl_pose'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_shape = torch.cat([t['smpl_shape'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     # gt_camera = torch.cat([t['camera'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_joints_2d = torch.cat([t['joints_2d'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_joints_2d_visible = torch.cat([t['joints_2d_visible'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_keypoints_2d = torch.cat([gt_joints_2d, gt_joints_2d_visible[:, :, None]], dim=-1)
+    #     gt_joints_3d = torch.cat([t['joints_3d'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_joints_3d_visible = torch.cat([t['joints_3d_visible'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #     gt_keypoints_3d = torch.cat([gt_joints_3d, gt_joints_3d_visible[:, :, None]], dim=-1)
+    #     del gt_joints_2d, gt_joints_2d_visible, gt_joints_3d, gt_joints_3d_visible
+    #     has_smpl = torch.cat([t['has_smpl'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #
+    #     smpl_gt = self.smpl(betas=gt_shape, body_pose=gt_pose[:, 1:],
+    #                         global_orient=gt_pose[:, None, 0], pose2rot=True)
+    #     gt_vertices = smpl_gt.vertices
+    #
+    #     # pred_bboxes = target['pred_bboxes']
+    #     pred_bboxes = torch.cat([t['boxes'][i] for t, (_, i) in zip(targets, indices)], dim=0)
+    #
+    #     # raw_images = target['raw_images']
+    #     # img_meta = target['img_meta']
+    #     # ori_shape = [i['ori_shape'] for i in img_meta]
+    #     ori_shape = [t['orig_size'] for t in targets]
+    #
+    #     # idxs_in_batch = target['idxs_in_batch']
+    #     idxs_in_batch = idx[0]
+    #
+    #     # pose_idx = target['pose_idx']
+    #     # pose_idx = idx[1]
+    #     pose_idx = torch.cat([i for (_, i) in indices], dim=0).to(pred_bboxes.device)
+    #
+    #     # scene = target['scene']
+    #     # scene = None
+    #     scene = [t["scene"] for t in targets]
+    #
+    #     batch_size = pred_joints.shape[0]
+    #
+    #     # if self.pad_size:
+    #     #     img_pad_shape = torch.tensor([i['pad_shape'][:2] for i in img_meta], dtype=torch.float32).to(
+    #     #         pred_joints.device)
+    #     #     img_size = img_pad_shape[idxs_in_batch[:, 0].long()]
+    #     # else:
+    #     #     img_size = torch.zeros(batch_size, 2).to(pred_joints.device)
+    #     #     img_size += torch.tensor(raw_images.shape[:-3:-1], dtype=img_size.dtype).to(img_size.device)
+    #
+    #     img_shape = torch.stack([t['size'] for t in targets], dim=0)
+    #     img_size = img_shape[idxs_in_batch]
+    #     # img_size should be [w, h]
+    #     img_size = img_size.flip(-1)
+    #
+    #     pred_bboxes[:, 2:] += pred_bboxes[:, :2]
+    #     pred_bboxes = pred_bboxes * torch.cat([img_size, img_size], dim=-1)
+    #
+    #     center_pts = (pred_bboxes[..., :2] + pred_bboxes[..., 2:]) / 2
+    #     crop_translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(
+    #         pred_joints.device)
+    #     crop_translation[..., :2] = pred_camera[..., 1:]
+    #     # We may detach it.
+    #     bboxes_size = torch.max(torch.abs(pred_bboxes[..., 0] - pred_bboxes[..., 2]),
+    #                             torch.abs(pred_bboxes[..., 1] - pred_bboxes[..., 3]))
+    #     valid_boxes = (torch.abs(pred_bboxes[..., 0] - pred_bboxes[..., 2]) > 5) & \
+    #                   (torch.abs(pred_bboxes[..., 1] - pred_bboxes[..., 3]) > 5)
+    #     crop_translation[..., 2] = 2 * self.FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
+    #     rotation_Is = torch.eye(3).unsqueeze(0).repeat(batch_size, 1, 1).to(pred_joints.device)
+    #     depth = 2 * self.FOCAL_LENGTH / (1e-6 + pred_camera[..., 0] * bboxes_size)
+    #     translation = torch.zeros((batch_size, 3), dtype=pred_camera.dtype).to(
+    #         pred_joints.device)
+    #     translation[:, :-1] = depth[:, None] * (center_pts + pred_camera[:, 1:] * bboxes_size.unsqueeze(
+    #         -1) - img_size / 2) / self.FOCAL_LENGTH
+    #     translation[:, -1] = depth
+    #     focal_length = self.FOCAL_LENGTH * torch.ones_like(depth)
+    #     # pred_joints_translated = pred_joints + translation[:, None, :]
+    #     pred_keypoints_2d_smpl = perspective_projection(pred_joints,
+    #                                                     rotation_Is,
+    #                                                     translation,
+    #                                                     focal_length,
+    #                                                     img_size / 2)
+    #     gt_keypoints_2d_orig = gt_keypoints_2d.clone()
+    #     pred_keypoints_2d_smpl_orig = pred_keypoints_2d_smpl.clone()
+    #     if self.normalize_kpts:
+    #         scale_w = torch.clamp(pred_bboxes[..., 2] - pred_bboxes[..., 0], 1, img_size[..., 0].max())
+    #         scale_h = torch.clamp(pred_bboxes[..., 3] - pred_bboxes[..., 1], 1, img_size[..., 1].max())
+    #         bboxes_scale = torch.stack([scale_w, scale_h], dim=1)
+    #         gt_keypoints_2d[..., :2] = (gt_keypoints_2d[..., :2] - center_pts.unsqueeze(1)) / bboxes_scale.unsqueeze(1)
+    #         pred_keypoints_2d_smpl = (pred_keypoints_2d_smpl - center_pts.unsqueeze(1)) / bboxes_scale.unsqueeze(1)
+    #     else:
+    #         pred_keypoints_2d_smpl = pred_keypoints_2d_smpl / img_size.unsqueeze(1)
+    #         gt_keypoints_2d[:, :, :-1] = gt_keypoints_2d[:, :, :-1] / img_size.unsqueeze(1)
+    #     loss_keypoints_smpl, error_ranks = self.keypoint_loss(pred_keypoints_2d_smpl[valid_boxes],
+    #                                                           gt_keypoints_2d[valid_boxes])
+    #
+    #     loss_keypoints_3d_smpl = self.keypoint_3d_loss(pred_joints[valid_boxes], gt_keypoints_3d[valid_boxes])
+    #     loss_shape_smpl = self.shape_loss(pred_vertices[valid_boxes], gt_vertices[valid_boxes], has_smpl[valid_boxes])
+    #     loss_regr_pose, loss_regr_betas = self.smpl_losses(pred_rotmat[valid_boxes], pred_betas[valid_boxes],
+    #                                                        gt_pose[valid_boxes], gt_shape[valid_boxes],
+    #                                                        has_smpl[valid_boxes])
+    #
+    #     loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl * 4, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
+    #                  'loss_shape_smpl': loss_shape_smpl, 'loss_regr_pose': loss_regr_pose,
+    #                  'loss_regr_betas': loss_regr_betas * 0.01,
+    #                  # 'img$raw_images': raw_images.detach(),
+    #                  # 'img$idxs_in_batch': idxs_in_batch.detach(),
+    #                  # 'img$pose_idx': pose_idx.detach(),
+    #                  # 'img$pred_vertices': pred_vertices.detach(),
+    #                  # 'img$translation': translation.detach(), 'img$error_rank': -bboxes_confidence.detach(),
+    #                  # 'img$pred_bboxes': pred_bboxes.detach(),
+    #                  # 'img$pred_keypoints_2d_smpl': (pred_keypoints_2d_smpl_orig[:, -24:, :]).detach().clone(),
+    #                  # 'img$gt_keypoints_2d': gt_keypoints_2d_orig.detach().clone(),
+    #                  }
+    #
+    #     if self.adversarial_cfg:
+    #         valid_batch_size = pred_rotmat[valid_boxes].shape[0]
+    #         pred_pose_shape = torch.cat([pred_rotmat[valid_boxes].view(valid_batch_size, -1), pred_betas[valid_boxes]],
+    #                                     dim=1)
+    #         loss_dict.update(
+    #             {'pred_pose_shape': pred_pose_shape}
+    #         )
+    #
+    #     # SDF LOSS
+    #     # best_idxs = select_index(idxs_in_batch[valid_boxes], pose_idx[valid_boxes].int()[:, 0],
+    #     #                          bboxes_confidence[valid_boxes])
+    #
+    #     bboxes_confidence = outputs["pred_logits"][idx][:, 1]
+    #     best_idxs = select_index(idxs_in_batch[valid_boxes, None], pose_idx[valid_boxes].int(),
+    #                              bboxes_confidence[valid_boxes])
+    #     sdf_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
+    #     for bid, ids in enumerate(best_idxs):
+    #         if len(ids) <= 1:
+    #             continue
+    #         ids = torch.tensor(ids)
+    #         sdf_loss[bid] = self.sdf_loss(pred_vertices[valid_boxes][ids], translation[valid_boxes][ids])
+    #     loss_dict.update({
+    #         'loss_sdf': sdf_loss.sum() if self.use_sdf else sdf_loss.sum().detach() * 1e-4
+    #     })
+    #
+    #     # render Loss
+    #     if self.nr_batch_rank:
+    #         device = pred_vertices.device
+    #         batch_rank_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
+    #         num_intruded_pixels = torch.zeros(len(best_idxs)).to(pred_vertices.device)
+    #         erode_mask_loss = torch.zeros(len(best_idxs)).to(pred_vertices.device)
+    #
+    #         for (bid, ids), img_size_t in zip(enumerate(best_idxs), img_shape):
+    #             img_size_t = img_size_t.flip(-1)  # [w, h]
+    #             image_size_t = max(img_size_t)
+    #             self.neural_renderer.image_size = image_size_t.item()
+    #
+    #             K = torch.eye(3, device=device)
+    #             K[0, 0] = K[1, 1] = self.FOCAL_LENGTH
+    #             K[2, 2] = 1
+    #             K[1, 2] = K[0, 2] = image_size_t / 2  # Because the neural renderer only support squared images
+    #             K = K.unsqueeze(0)  # Our batch size is 1
+    #             R = torch.eye(3, device=device).unsqueeze(0)
+    #             t = torch.zeros(3, device=device).unsqueeze(0)
+    #
+    #             if len(ids) <= 1 or scene[bid].max() < 1:
+    #                 continue
+    #             ids = torch.tensor(ids)
+    #             verts = pred_vertices[valid_boxes][ids] + translation[valid_boxes][ids].unsqueeze(
+    #                 1)  # num_personx6890x3
+    #             # cur_pose_idxs = pose_idx[valid_boxes][ids, 0]
+    #             cur_pose_idxs = pose_idx[valid_boxes][ids]
+    #             with torch.no_grad():
+    #                 pose_idxs_int = cur_pose_idxs.int()
+    #                 has_mask_gt = torch.zeros_like(pose_idxs_int)
+    #                 for has_mask_idx, cur_pid in enumerate(pose_idxs_int):
+    #                     has_mask_gt[has_mask_idx] = 1 if torch.sum(scene[bid] == (cur_pid + 1).item()) > 0 else 0
+    #
+    #             if has_mask_gt.sum() < 1:
+    #                 continue
+    #
+    #             verts = verts[has_mask_gt > 0]
+    #             cur_pose_idxs = cur_pose_idxs[has_mask_gt > 0]
+    #
+    #             bs, nv = verts.shape[:2]
+    #             face_tensor = torch.tensor(self.smpl.faces.astype(np.int64), dtype=torch.long,
+    #                                        device=device).unsqueeze_(0).repeat([bs, 1, 1])
+    #             bs, nf = face_tensor.shape[:2]
+    #             textures = torch.ones_like(face_tensor).float() + cur_pose_idxs.to(device)[:, None, None]
+    #             textures = textures[:, :, None, None, None, :]
+    #             rgb, depth, mask = self.neural_renderer(verts, face_tensor.int(), textures=textures, K=K, R=R, t=t,
+    #                                                     dist_coeffs=torch.tensor([[0., 0., 0., 0., 0.]], device=device))
+    #
+    #             w_diff, h_diff = (image_size_t - img_size_t[0]) // 2, (image_size_t - img_size_t[1]) // 2
+    #             # predicted_depth = depth[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
+    #             # predicted_mask = mask[:, h_diff:rgb.shape[-2] - h_diff, w_diff:rgb.shape[-1] - w_diff]
+    #             predicted_depth = depth[:, h_diff:h_diff + img_size_t[1], w_diff:w_diff + img_size_t[0]]
+    #             predicted_mask = mask[:, h_diff:h_diff + img_size_t[1], w_diff:w_diff + img_size_t[0]]
+    #
+    #             with torch.no_grad():
+    #                 gt_foreground = scene[bid] > 0
+    #                 # foreground_select = (cur_pose_idxs.round().int() + 1)[:, None, None] == scene[bid].int()
+    #                 foreground_select = (cur_pose_idxs.int() + 1)[:, None, None] == scene[bid].int()
+    #
+    #                 intruded_parts_mask = torch.prod(predicted_mask, dim=0)
+    #                 supervising_mask = intruded_parts_mask.unsqueeze(0).float() * gt_foreground.unsqueeze(0).float() * (
+    #                     ~foreground_select).float()
+    #                 if supervising_mask.norm() == 0:  # No ordinal relationship errors is detected.
+    #                     continue
+    #
+    #             gt_closest_depth_multi = torch.zeros_like(predicted_depth)
+    #             gt_closest_depth_multi[foreground_select] += predicted_depth[foreground_select]
+    #             gt_closest_depth = gt_closest_depth_multi.sum(0)
+    #
+    #             gt_closest_depth = gt_closest_depth.repeat([bs, 1, 1])
+    #             ordinal_distance = (gt_closest_depth - predicted_depth) * supervising_mask
+    #             penalize_ranks = torch.log(1. + torch.exp(ordinal_distance)) * supervising_mask
+    #             # To avoid instable gradient:
+    #             if torch.sum(ordinal_distance > 10) > 0:
+    #                 penalize_ranks[ordinal_distance.detach() > 10] = ordinal_distance[ordinal_distance.detach() > 10]
+    #                 print(f'{torch.sum(ordinal_distance > 10)} pixels found to be greater than 10 in batch rank loss')
+    #             batch_rank_loss[bid] = penalize_ranks.mean()
+    #             num_intruded_pixels[bid] = supervising_mask.sum()
+    #
+    #         # loss_dict.update({'loss_batch_rank': batch_rank_loss, 'num_intruded_pixels': num_intruded_pixels})
+    #         loss_dict.update(
+    #             {'loss_batch_rank': batch_rank_loss.mean(), 'num_intruded_pixels': num_intruded_pixels.mean()})
+    #
+    #     if self.re_weight:
+    #         for k, v in self.re_weight.items():
+    #             if k.startswith('adv_loss'):
+    #                 loss_dict[k] *= v
+    #             else:
+    #                 loss_dict[f'loss_{k}'] *= v
+    #
+    #     return loss_dict
 
     def empty_output(self, outputs):
         loss_dict = {'loss_keypoints_smpl': outputs["pred_camera"].sum() * 0,
@@ -478,15 +478,10 @@ class SMPLLoss(nn.Module):
         assert reduction_override in (None, 'none', 'mean', 'sum')
         reduction = (reduction_override if reduction_override else self.reduction)
 
-        # pred_rotmat = pred['pred_rotmat']
-        # pred_camera = pred['pred_camera']
-        # pred_joints = pred['pred_joints']
-        # pred_vertices = pred['pred_vertices']
-        # pred_betas = pred['pred_betas']
         idx = self._get_src_permutation_idx(indices)
 
         num_smpl = idx[0].shape[0]
-        if not num_smpl:
+        if num_smpl == 0:
             return self.empty_output(outputs)
 
         # LOAD BBOX
@@ -522,14 +517,6 @@ class SMPLLoss(nn.Module):
         pred_vertices = smpl_output.vertices
         pred_joints = smpl_output.joints
 
-        # gt_rotmat = target['gt_rotmat']  # It's not rotmat actually. This is a (B, 24, 3) tensor.
-        # gt_shape = target['gt_shape']
-        # gt_camera = target['gt_camera']
-        # gt_keypoints_2d = target['gt_keypoints_2d']
-        # gt_keypoints_3d = target['gt_keypoints_3d']
-        # has_smpl = target['has_smpl']
-        # gt_vertices = target['gt_vertices']
-
         # LOAD GT
         gt_pose = torch.cat([t['smpl_pose'][i] for t, (_, i) in zip(targets, indices)], dim=0)
         gt_shape = torch.cat([t['smpl_shape'][i] for t, (_, i) in zip(targets, indices)], dim=0)
@@ -546,7 +533,6 @@ class SMPLLoss(nn.Module):
         smpl_gt = self.smpl(betas=gt_shape, body_pose=gt_pose[:, 1:],
                             global_orient=gt_pose[:, None, 0], pose2rot=True)
         gt_vertices = smpl_gt.vertices
-
 
         # 3D joints projection to 2D joints
         batch_size = pred_joints.shape[0]
@@ -595,14 +581,6 @@ class SMPLLoss(nn.Module):
         loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl * 4, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
                      'loss_shape_smpl': loss_shape_smpl, 'loss_regr_pose': loss_regr_pose,
                      'loss_regr_betas': loss_regr_betas * 0.01,
-                     # 'img$raw_images': raw_images.detach(),
-                     # 'img$idxs_in_batch': idxs_in_batch.detach(),
-                     # 'img$pose_idx': pose_idx.detach(),
-                     # 'img$pred_vertices': pred_vertices.detach(),
-                     # 'img$translation': translation.detach(), 'img$error_rank': -bboxes_confidence.detach(),
-                     # 'img$pred_bboxes': pred_bboxes.detach(),
-                     # 'img$pred_keypoints_2d_smpl': (pred_keypoints_2d_smpl_orig[:, -24:, :]).detach().clone(),
-                     # 'img$gt_keypoints_2d': gt_keypoints_2d_orig.detach().clone(),
                      }
 
         if self.adversarial_cfg:
@@ -724,8 +702,6 @@ class SMPLLoss(nn.Module):
                     loss_dict[f'loss_{k}'] *= v
 
         return loss_dict
-
-
 
 
     def keypoint_loss(self, pred_keypoints_2d, gt_keypoints_2d):
