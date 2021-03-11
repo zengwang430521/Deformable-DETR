@@ -175,16 +175,34 @@ def main(args):
     # dataset_train = build_dataset(image_set='val', args=args)   # debug only
     dataset_val = build_dataset(image_set='val', args=args)
 
-    if args.distributed:
-        if args.cache_mode:
-            sampler_train = samplers.NodeDistributedSampler(dataset_train)
-            sampler_val = samplers.NodeDistributedSampler(dataset_val, shuffle=False)
-        else:
-            sampler_train = samplers.DistributedSampler(dataset_train)
-            sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    if args.smpl:
+        sample_weight = [child_dataset.sample_weight for child_dataset in dataset_train.datasets]
+        sample_weight = np.concatenate(sample_weight, axis=0)
+        sampler_train = torch.utils.data.sampler.WeightedRandomSampler(sample_weight, len(dataset_train))
+
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+
+        if args.distributed:
+            if args.cache_mode:
+                # raise NotImplementedError('Not finish weighted distributed sampler for SMPL with cache mode.')
+                sampler_train = samplers.NodeDistributedSampler(sampler_train)
+                sampler_val = samplers.NodeDistributedSampler(sampler_val, shuffle=False)
+            else:
+                sampler_train = samplers.DistributedSampler(sampler_train)
+                sampler_val = samplers.DistributedSampler(sampler_val, shuffle=False)
+
+    else:
+        if args.distributed:
+            if args.cache_mode:
+                sampler_train = samplers.NodeDistributedSampler(dataset_train)
+                sampler_val = samplers.NodeDistributedSampler(dataset_val, shuffle=False)
+            else:
+                sampler_train = samplers.DistributedSampler(dataset_train)
+                sampler_val = samplers.DistributedSampler(dataset_val, shuffle=False)
+        else:
+            sampler_train = torch.utils.data.RandomSampler(dataset_train)
+            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+
 
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)

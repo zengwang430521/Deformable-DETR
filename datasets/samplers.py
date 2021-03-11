@@ -61,6 +61,13 @@ class DistributedSampler(Sampler):
         # subsample
         offset = self.num_samples * self.rank
         indices = indices[offset : offset + self.num_samples]
+
+        # following https://github.com/pytorch/pytorch/issues/23430
+        # to make it compatible with sampler as input
+        if isinstance(self.dataset, Sampler):
+            orig_indices = list(iter(self.dataset))
+            indices = [orig_indices[i] for i in indices]
+
         assert len(indices) == self.num_samples
 
         return iter(indices)
@@ -128,6 +135,12 @@ class NodeDistributedSampler(Sampler):
 
         # subsample
         indices = indices[self.rank // self.num_parts:self.total_size_parts:self.num_replicas // self.num_parts]
+        # following https://github.com/pytorch/pytorch/issues/23430
+        # to make it compatible with sampler as input
+        if isinstance(self.dataset, Sampler):
+            orig_indices = list(iter(self.dataset))
+            indices = [orig_indices[i] for i in indices]
+
         assert len(indices) == self.num_samples
 
         return iter(indices)
