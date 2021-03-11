@@ -361,10 +361,13 @@ class SMPLDataset(Dataset):
 
     def __getitem__(self, idx):
         img_info = deepcopy(self.img_infos[idx])
+
         try:
             img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
         except:
-            print(osp.join(self.img_prefix, img_info['filename']))
+            print('Load image failed:{}, try another one.'.format(osp.join(self.img_prefix, img_info['filename'])))
+            idx = np.random.randint(0, self.__len__())
+            return self.__getitem__(idx)
 
         img_info = self.add_essential_keys(img_info)
 
