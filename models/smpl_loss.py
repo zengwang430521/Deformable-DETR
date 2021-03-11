@@ -79,7 +79,8 @@ loss_cfg=dict(type='SMPLLoss', normalize_kpts=True,
 class SMPLLoss(nn.Module):
 
     def __init__(self, beta=1.0, reduction='mean', loss_weight=1.0,
-                 re_weight={'batch_rank': 100., 'sdf': 0.01},
+                 # re_weight={'batch_rank': 100., 'sdf': 0.01}, # re_weight is realized by loss coef
+                 re_weight={},
                  normalize_kpts=True, pad_size=False,
                  JOINT_REGRESSOR_H36M='data/J_regressor_h36m.npy',
                  debugging=False, adversarial_cfg=None, use_sdf=True, FOCAL_LENGTH=1000,
@@ -586,10 +587,17 @@ class SMPLLoss(nn.Module):
                                                            gt_pose[valid_boxes], gt_shape[valid_boxes],
                                                            has_smpl[valid_boxes])
 
-        loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl * 4, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
+        # loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl * 4, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
+        #              'loss_shape_smpl': loss_shape_smpl, 'loss_regr_pose': loss_regr_pose,
+        #              'loss_regr_betas': loss_regr_betas * 0.01,
+        #              }
+
+        # the adjustment is realized by loss coef.
+        loss_dict = {'loss_keypoints_smpl': loss_keypoints_smpl, 'loss_keypoints_3d_smpl': loss_keypoints_3d_smpl,
                      'loss_shape_smpl': loss_shape_smpl, 'loss_regr_pose': loss_regr_pose,
-                     'loss_regr_betas': loss_regr_betas * 0.01,
+                     'loss_regr_betas': loss_regr_betas,
                      }
+
 
         if self.adversarial_cfg:
             valid_batch_size = pred_rotmat[valid_boxes].shape[0]
