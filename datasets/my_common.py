@@ -361,7 +361,11 @@ class SMPLDataset(Dataset):
 
     def __getitem__(self, idx):
         img_info = deepcopy(self.img_infos[idx])
-        img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
+        try:
+            img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
+        except:
+            print(img_info['filename'])
+
         img_info = self.add_essential_keys(img_info)
 
         img, target = self.prepare(img, img_info)
