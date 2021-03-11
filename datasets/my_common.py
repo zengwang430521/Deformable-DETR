@@ -364,7 +364,7 @@ class SMPLDataset(Dataset):
         try:
             img = self.get_image(osp.join(self.img_prefix, img_info['filename']))
         except:
-            print(img_info['filename'])
+            print(osp.join(self.img_prefix, img_info['filename']))
 
         img_info = self.add_essential_keys(img_info)
 
