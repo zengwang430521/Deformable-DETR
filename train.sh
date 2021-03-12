@@ -12,4 +12,4 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 GPUS_PER_NODE=4 ./tools/run_dist_launch.sh 4 ./conf
 
 
 # test the speed of deformable detr itself
-CUDA_VISIBLE_DEVICES=4,5,6,7 GPUS_PER_NODE=4 ./tools/run_dist_launch.sh 2 ./configs/r50_deformable_detr.sh --batch_size=2 --num_workers=4
+CUDA_VISIBLE_DEVICES=4,5,6,7 GPUS_PER_NODE=4 ./tools/run_dist_launch.sh 4 ./configs/r50_deformable_detr.sh --batch_size=2 --num_workers=4
