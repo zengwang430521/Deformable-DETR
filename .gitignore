@@ -132,3 +132,5 @@ data
 work_dirs/
 
 eval_results
+output/*
+*.pth

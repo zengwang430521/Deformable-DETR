@@ -35,6 +35,7 @@ def get_args_parser():
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
 
+
     parser.add_argument('--sgd', action='store_true')
 
     # Variants of Deformable DETR
@@ -80,6 +81,9 @@ def get_args_parser():
     # * SMPL
     parser.add_argument('--smpl', action='store_true',
                         help="Train smpl head if the flag is provided")
+    parser.add_argument('--smpl_head', default='hmr', type=str, help="SMPL head type")
+    parser.add_argument('--sdf', action='store_true', help="SDF loss")
+    parser.add_argument('--render', action='store_true', help="renderer loss")
 
     # Loss
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_false',
@@ -110,6 +114,7 @@ def get_args_parser():
     parser.add_argument('--key_loss_coef', default=4, type=float)
     parser.add_argument('--key3D_loss_coef', default=1, type=float)
 
+
     # dataset parameters
     parser.add_argument('--dataset_file', default='coco')
     parser.add_argument('--coco_path', default='./data/coco', type=str)
@@ -125,7 +130,7 @@ def get_args_parser():
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
     parser.add_argument('--eval', action='store_true')
-    parser.add_argument('--num_workers', default=0, type=int)
+    parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
 
     parser.add_argument('--eval_dataset', default='mupots')
