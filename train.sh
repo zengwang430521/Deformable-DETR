@@ -14,6 +14,8 @@ GPUS_PER_NODE=8 ./tools/run_dist_launch.sh 8 ./configs/smpl.sh --output_dir ./ou
  --enc_layers=2 --dec_layers=6 --num_queries=100 --smpl --batch_size=2 --num_workers=4 --epochs=30
  --resume=output/smpl1/checkpoint.pth
 
+python main.py  --output_dir ./output/smpl1 --enc_layers=2 --dec_layers=6 --num_queries=100 --smpl --batch_size=2 --num_workers=4 --epochs=30 --resume=output/smpl1/checkpoint.pth
+
 # test the speed of deformable detr itself
 CUDA_VISIBLE_DEVICES=4,5,6,7 GPUS_PER_NODE=4 ./tools/run_dist_launch.sh 4 ./configs/r50_deformable_detr.sh --batch_size=2 --num_workers=4
 

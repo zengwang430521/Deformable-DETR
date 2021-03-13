@@ -297,10 +297,17 @@ def main(args):
             args.start_epoch = checkpoint['epoch'] + 1
         # check the resumed model
         if not args.eval:
-            test_stats, coco_evaluator = evaluate(
-                model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
-            )
-    
+
+            if args.smpl:
+                # FIXME: No eval for smpl yet.
+                # from datasets.mesh_eval import evaluate_smpl
+                # test_stats = evaluate_smpl(model, data_loader_val, args, device)
+                pass
+            else:
+                test_stats, coco_evaluator = evaluate(
+                    model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir
+                )
+
     if args.eval:
         test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
                                               data_loader_val, base_ds, device, args.output_dir)
