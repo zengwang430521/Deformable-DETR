@@ -540,9 +540,10 @@ def evaluate_smpl(model, data_loader, args, device):
 
     dump_dir = f'eval_results/eval_{args.eval_dataset}'
     os.makedirs(dump_dir, exist_ok=True)
-    viz_dir = f'eval_results/vis_{args.eval_dataset}'
-    if viz_dir:
-        os.makedirs(viz_dir, exist_ok=True)
+    viz_dir=''
+    # viz_dir = f'eval_results/vis_{args.eval_dataset}'
+    # if viz_dir:
+    #     os.makedirs(viz_dir, exist_ok=True)
 
     FOCAL_LENGTH = 1000
     eval_handler_mapper = dict(

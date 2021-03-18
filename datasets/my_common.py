@@ -155,6 +155,10 @@ class SMPLDataset(Dataset):
         """
         with open(ann_file, 'rb') as f:
             raw_infos = pickle.load(f)
+        # for quick eval
+        if 'val_p2' in ann_file:
+            print('quick eval')
+            raw_infos = raw_infos[0:len(raw_infos):100]
         return raw_infos
 
     def add_essential_keys(self, img_info):
