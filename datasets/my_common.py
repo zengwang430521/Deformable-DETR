@@ -17,7 +17,7 @@ import torch
 import pycocotools.mask as mask_util
 import datasets.my_transforms as MyT
 from torch.utils.data import ConcatDataset
-
+from os.path import join
 
 def rot2DPts(x, y, rotMat):
     new_x = rotMat[0, 0] * x + rotMat[0, 1] * y + rotMat[0, 2]
@@ -386,46 +386,78 @@ class SMPLDataset(Dataset):
 
 
 def build_smpl_mix_dataset(image_set, args=None):
-    mpii_root = '/home/wzeng/mydata/mpii/'
-    coco_data_root = '/home/wzeng/mydata/coco/'
-    h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
-    pose_track_root = '/home/wzeng/mydata/posetrack2018/'
-    mpi_inf_3dhp_root = '/home/wzeng/mydata/mpi_inf_3dhp_new/'
-    panoptic_root = '/home/wzeng/mydata/Panoptic/'
+    data_root = '/mnt/lustre/zengwang/data'
+    h36m_root = join(data_root, 'h36m')
+    coco_data_root = join(data_root, 'coco')
+    lsp_root = join(data_root, 'lsp_dataset_original')
+    mpii_root = join(data_root, 'mpii')
+    pose_track_root = join(data_root, 'posetrack2018/')
+    mpi_inf_3dhp_root = join(data_root, '3dhp')
+
+    train_transform = smpl_common_transforms('train')
+    h36m = dict(
+        ann_file=join(h36m_root, 'rcnn/train.pkl'),
+        img_prefix=join(h36m_root, 'train_set'),
+        transforms=train_transform,
+        sample_weight=0.6,
+    ),
+    coco = dict(
+        ann_file=join(coco_data_root, 'coco-annots/train_densepose_2014_depth_nocrowd.pkl'),
+        img_prefix=join(coco_data_root, 'train2014/'),
+        transforms=train_transform,
+        sample_weight=0.3,
+    ),
+    lsp = dict(
+        ann_file=join(lsp_root, 'train.pkl'),
+        img_prefix=join(lsp_root, 'images/'),
+        transforms=train_transform,
+        sample_weight=0.3,
+    ),
+    mpii = dict(
+        ann_file=join(mpii_root, 'mpii-rcnn/train.pkl'),
+        img_prefix=join(mpii_root, 'images/'),
+        transforms=train_transform,
+        sample_weight=0.3,
+    ),
+    posetrack = dict(
+        ann_file=join(pose_track_root, 'rcnn/train.pkl'),
+        img_prefix=join(pose_track_root, 'images/'),
+        transforms=train_transform,
+        sample_weight=0.3,
+    ),
+    hp3d = dict(
+        ann_file=mpi_inf_3dhp_root + 'mpi_inf_rcnn/train.pkl',
+        img_prefix=mpi_inf_3dhp_root,
+        transforms=train_transform,
+        sample_weight=0.1,
+    )
 
     if image_set == 'train':
-        train_cfgs = [
-            dict(
-                ann_file=h36m_root + 'rcnn/train.pkl',
-                img_prefix=h36m_root,
-                transforms=smpl_common_transforms('train'),
-                sample_weight=0.6,
-            ),
-            dict(
-                ann_file=coco_data_root + 'annotations/train_densepose_2014_depth_nocrowd.pkl',
-                img_prefix=coco_data_root + 'train2014/',
-                transforms=smpl_common_transforms('train'),
-                sample_weight=0.3,
-            ),
-            dict(
-                ann_file=mpii_root + 'rcnn/train.pkl',
-                img_prefix=mpii_root + 'images/',
-                transforms=smpl_common_transforms('train'),
-                sample_weight=0.3,
-            ),
-            dict(
-                ann_file=pose_track_root + 'rcnn/train.pkl',
-                img_prefix=pose_track_root,
-                transforms=smpl_common_transforms('train'),
-                sample_weight=0.3,
-            ),
-            dict(
-                ann_file=mpi_inf_3dhp_root + 'rcnn/train.pkl',
-                img_prefix=mpi_inf_3dhp_root,
-                transforms=smpl_common_transforms('train'),
-                sample_weight=0.1,
-            )
-        ]
+        if args.stage == 'pretrain':
+            train_cfgs = [
+                h36m,
+                coco,
+                lsp,
+                mpii,
+                hp3d
+            ]
+        elif args.stage == 'baseline':
+            train_cfgs = [
+                h36m,
+                coco,
+                posetrack,
+                mpii,
+                hp3d
+            ]
+        else:
+            train_cfgs = [
+                h36m,
+                coco,
+                mpii,
+                posetrack,
+                hp3d
+            ]
+
         datasets = []
         for dataset_cfg in train_cfgs:
             datasets.append(SMPLDataset(**dataset_cfg))
