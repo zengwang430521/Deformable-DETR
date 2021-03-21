@@ -426,7 +426,7 @@ def build_smpl_mix_dataset(image_set, args=None):
         sample_weight=0.3,
     )
     hp3d = dict(
-        ann_file=mpi_inf_3dhp_root + 'mpi_inf_rcnn/train.pkl',
+        ann_file=join(mpi_inf_3dhp_root, 'mpi_inf_rcnn/train.pkl'),
         img_prefix=mpi_inf_3dhp_root,
         transforms=train_transform,
         sample_weight=0.1,
