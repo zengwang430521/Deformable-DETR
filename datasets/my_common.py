@@ -400,31 +400,31 @@ def build_smpl_mix_dataset(image_set, args=None):
         img_prefix=join(h36m_root, 'train_set'),
         transforms=train_transform,
         sample_weight=0.6,
-    ),
+    )
     coco = dict(
         ann_file=join(coco_data_root, 'coco-annots/train_densepose_2014_depth_nocrowd.pkl'),
         img_prefix=join(coco_data_root, 'train2014/'),
         transforms=train_transform,
         sample_weight=0.3,
-    ),
+    )
     lsp = dict(
         ann_file=join(lsp_root, 'train.pkl'),
         img_prefix=join(lsp_root, 'images/'),
         transforms=train_transform,
         sample_weight=0.3,
-    ),
+    )
     mpii = dict(
         ann_file=join(mpii_root, 'mpii-rcnn/train.pkl'),
         img_prefix=join(mpii_root, 'images/'),
         transforms=train_transform,
         sample_weight=0.3,
-    ),
+    )
     posetrack = dict(
         ann_file=join(pose_track_root, 'rcnn/train.pkl'),
         img_prefix=join(pose_track_root, 'images/'),
         transforms=train_transform,
         sample_weight=0.3,
-    ),
+    )
     hp3d = dict(
         ann_file=mpi_inf_3dhp_root + 'mpi_inf_rcnn/train.pkl',
         img_prefix=mpi_inf_3dhp_root,
