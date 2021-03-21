@@ -93,7 +93,7 @@ def get_args_parser():
     parser.add_argument('--smpl_head', default='hmr', type=str, help="SMPL head type")
     parser.add_argument('--sdf', action='store_true', help="SDF loss")
     parser.add_argument('--render', action='store_true', help="renderer loss")
-    parser.add_argument('--stage', type=str, help="smpl train stage", default='finetune')
+    parser.add_argument('--stage', default='finetune', type=str, help="smpl train stage", )
 
 
     # Loss

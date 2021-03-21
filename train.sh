@@ -29,3 +29,21 @@ GPUS_PER_NODE=8 ./tools/run_dist_launch.sh 8 ./configs/smpl.sh --output_dir ./ou
 --mesh_loss_coef=5
 --key_loss_coef=25
 --key3D_loss_coef=5
+
+GPUS_PER_NODE=8 ./tools/run_dist_slurm.sh HA_3D deformable_detr 16 configs/smpl.sh
+--output_dir ./output/smpl1
+--enc_layers=2 --dec_layers=6 --num_queries=100 --smpl --batch_size=2 --num_workers=2 --epochs=30
+--betas_loss_coef=0.05
+--pose_loss_coef=5
+--mesh_loss_coef=5
+--key_loss_coef=25
+--key3D_loss_coef=5
+--stage=pretrain
+
+
+GPUS_PER_NODE=1 ./tools/run_dist_slurm.sh HA_3D deformable_detr 1 configs/smpl.sh
+--output_dir ./output/smpl1
+--enc_layers=2 --dec_layers=6 --num_queries=100 --smpl --batch_size=2 --num_workers=1 --epochs=30
+--stage=pretrain
+
+python main.py  --output_dir ./output/debug --enc_layers=1 --dec_layers=1 --num_queries=100 --smpl --batch_size=2 --num_workers=0

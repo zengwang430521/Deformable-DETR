@@ -17,18 +17,20 @@ pip install -r requirements.txt
 
 cd ./models/ops
 sh ./make.sh
-# unit test (should see all checking is True)
 python test.py
+# unit test (should see all checking is True)
+
 
 cd neural_renderer/
-python3 setup.py install
+python3 setup.py install --user
 cd ../sdf
-python3 setup.py install
+python3 setup.py install --user
 
 pip install smplx
 pip install scikit-image
 pip install opencv-python
-
 pip install pyrender trimesh
 
 ln -s  /home/wzeng/mydata/mupots-3d data/mupots-3d
+
+pip install smplx scikit-image opencv-python  pyrender trimesh h5py --user
