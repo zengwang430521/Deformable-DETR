@@ -471,7 +471,6 @@ def build_smpl_eval_dataset(dataset, args=None):
     data_root = '/mnt/lustre/zengwang/data'
     h36m_root = join(data_root, 'h36m')
     panoptic_root = join(data_root, 'panoptic')
-    mupots_root = "data/mupots-3d/"
     mupots_root = join(data_root, 'mupots-3d')
     eval_transform = smpl_common_transforms('eval')
 
