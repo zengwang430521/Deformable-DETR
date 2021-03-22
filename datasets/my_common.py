@@ -468,49 +468,51 @@ def build_smpl_mix_dataset(image_set, args=None):
 
 
 def build_smpl_eval_dataset(dataset, args=None):
-    panoptic_root = '/home/wzeng/mydata/panoptic/'
-    h36m_root = '/home/wzeng/mydata/H36Mnew/c2f_vol/'
-    h36m_prefix = '/home/wzeng/mydata/MyH36MOrigin'
+    data_root = '/mnt/lustre/zengwang/data'
+    h36m_root = join(data_root, 'h36m')
+    panoptic_root = join(data_root, 'panoptic')
     mupots_root = "data/mupots-3d/"
+    mupots_root = join(data_root, 'mupots-3d')
+    eval_transform = smpl_common_transforms('eval')
 
     eval_dataset_mapper = dict(
         cropped_h36m=dict(
-            ann_file=h36m_root + 'val.pkl',
-            img_prefix=h36m_root + 'images/',
-            transforms=smpl_common_transforms('eval'),
+            ann_file=join(h36m_root, 'rcnn/val.pkl'),
+            img_prefix=join(h36m_root, 'valid_set'),
+            transforms=eval_transform,
         ),
         full_h36m=dict(
-            ann_file=h36m_root+'rcnn/val_p2.pkl',
-            img_prefix=h36m_prefix,
-            transforms=smpl_common_transforms('eval'),
+            ann_file=join(h36m_root, 'rcnn/val_p2.pkl'),
+            img_prefix=join(h36m_root, 'valid_set'),
+            transforms=eval_transform,
         ),
         ultimatum=dict(
-            ann_file=panoptic_root + 'processed/annotations/160422_ultimatum1.pkl',
+            ann_file=join(panoptic_root, 'annotations/160422_ultimatum1.pkl'),
             img_prefix=panoptic_root,
-            transforms=smpl_common_transforms('eval'),
+            transforms=eval_transform,
         ),
         panoptic=dict(
-            ann_file=panoptic_root + 'processed/annotations/160422_ultimatum1.pkl',
+            ann_file=join(panoptic_root, 'annotations/160422_ultimatum1.pkl'),
             img_prefix=panoptic_root,
-            transforms=smpl_common_transforms('eval'),
+            transforms=eval_transform,
         ),
         haggling=dict(
-            ann_file=panoptic_root + 'processed/annotations/160422_haggling1.pkl',
+            ann_file=join(panoptic_root, 'annotations/160422_haggling1.pkl'),
             img_prefix=panoptic_root,
-            transforms=smpl_common_transforms('eval'),
+            transforms=eval_transform,
         ),
         pizza=dict(
-            ann_file=panoptic_root + 'processed/annotations/160906_pizza1.pkl',
+            ann_file=join(panoptic_root, 'annotations/160906_pizza1.pkl'),
             img_prefix=panoptic_root,
-            transforms=smpl_common_transforms('eval'),
+            transforms=eval_transform,
         ),
         mafia=dict(
-            ann_file=panoptic_root + 'processed/annotations/160422_mafia2.pkl',
+            ann_file=join(panoptic_root, 'annotations/160422_mafia2.pkl'),
             img_prefix=panoptic_root,
-            transforms=smpl_common_transforms('eval'),
+            transforms=eval_transform,
         ),
         mupots=dict(
-            ann_file=mupots_root + 'rcnn/all_sorted.pkl',
+            ann_file=join(mupots_root, 'rcnn/all_sorted.pkl'),
             img_prefix='',
             transforms=smpl_common_transforms('eval'),
         ),
