@@ -28,9 +28,6 @@ import pickle
 from tqdm import tqdm
 from models.pose_utils import reconstruction_error
 
-from models.smpl.renderer import Renderer
-
-
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -66,6 +63,7 @@ class EvalHandler(object):
         self.camera = PerspectiveCamera(FOCAL_LENGTH=FOCAL_LENGTH)
         self.FOCAL_LENGTH = FOCAL_LENGTH
         if self.viz_dir:
+            from models.smpl.renderer import Renderer
             self.renderer = Renderer(focal_length=FOCAL_LENGTH)
             pass
         else:
